@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getUserById,
@@ -12,15 +12,10 @@ import {
 } from '@/lib/supabase'
 
 const PLANET_PORT_CODES: Record<string, string> = {
-  mars:     'MRS',
-  jupiter:  'JUP',
-  saturn:   'SAT',
-  venus:    'VEN',
-  neptune:  'NEP',
-  moonrock: 'MR ',
+  mars: 'MRS', jupiter: 'JUP', saturn: 'SAT',
+  venus: 'VEN', neptune: 'NEP', moonrock: 'MR ',
 }
 
-// #8 Planet background SVG gradients
 const PLANET_BG: Record<string, string> = {
   mars:     'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,72,32,0.25) 0%, rgba(180,30,10,0.1) 40%, transparent 70%)',
   jupiter:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(240,180,40,0.2) 0%, rgba(180,120,20,0.08) 40%, transparent 70%)',
@@ -30,10 +25,12 @@ const PLANET_BG: Record<string, string> = {
   moonrock: 'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(180,100,255,0.25) 0%, rgba(120,50,200,0.1) 40%, transparent 70%)',
 }
 
-// #8 Large faded planet emoji positions
 const PLANET_EMOJIS: Record<string, string> = {
-  mars: '🔴', jupiter: '🟡', saturn: '🪐', venus: '✨', neptune: '🌊', moonrock: '🌙'
+  mars: '🔴', jupiter: '🟡', saturn: '🪐', venus: '✨', neptune: '🌊', moonrock: '🌙',
 }
+
+// 5 core planets for progress bar
+const CORE_PLANETS = ['mars', 'jupiter', 'saturn', 'venus', 'neptune']
 
 interface PassData {
   id: string
@@ -58,17 +55,23 @@ interface OfflinePassData {
 export default function BoardingPassClient({
   userId,
   offlineData,
+  // #1 #5 Current session planet+intensity passed from URL
+  currentPlanet,
+  currentIntensity,
 }: {
   userId?: string
   offlineData?: OfflinePassData
+  currentPlanet?: string
+  currentIntensity?: string
 }) {
   const router = useRouter()
-  const passRef = useRef<HTMLDivElement>(null)
   const [pass, setPass] = useState<PassData | null>(null)
   const [loading, setLoading] = useState(true)
   const [shareSupported, setShareSupported] = useState(false)
   const [copied, setCopied] = useState(false)
   const [stars, setStars] = useState<Array<{ x: number; y: number; r: number; o: number }>>([])
+  // #9 Track visited planets from localStorage
+  const [visitedPlanets, setVisitedPlanets] = useState<string[]>([])
 
   useEffect(() => {
     setStars(Array.from({ length: 140 }, () => ({
@@ -77,9 +80,20 @@ export default function BoardingPassClient({
       r: Math.random() * 1.1 + 0.2,
       o: Math.random() * 0.5 + 0.1,
     })))
-    // #5 Check if native share is supported
     setShareSupported(!!navigator.share)
-  }, [])
+
+    // Load visited planets from localStorage
+    const stored = localStorage.getItem('override_visited_planets')
+    const visited: string[] = stored ? JSON.parse(stored) : []
+    // Add current planet if not already there
+    if (currentPlanet && !visited.includes(currentPlanet)) {
+      const updated = [...visited, currentPlanet]
+      localStorage.setItem('override_visited_planets', JSON.stringify(updated))
+      setVisitedPlanets(updated)
+    } else {
+      setVisitedPlanets(visited)
+    }
+  }, [currentPlanet])
 
   useEffect(() => {
     async function load() {
@@ -88,64 +102,51 @@ export default function BoardingPassClient({
           const data = await getUserById(userId)
           setPass(data)
         } catch {
-          if (offlineData) {
-            setPass({
-              id: 'offline',
-              name: offlineData.name,
-              planet: offlineData.planet,
-              intensity: offlineData.intensity,
-              recommendation: ROUTING[offlineData.planet]?.[offlineData.intensity]?.key || 'jupiter',
-              level: offlineData.level || 'NEW_RECRUIT',
-              status: 'LAUNCHED',
-              created_at: new Date().toISOString(),
-              scan_count: 1,
-            })
-          }
+          if (offlineData) buildOfflinePass(offlineData)
+          else setLoading(false)
+          return
         }
       } else if (offlineData) {
-        setPass({
-          id: 'offline',
-          name: offlineData.name,
-          planet: offlineData.planet,
-          intensity: offlineData.intensity,
-          recommendation: ROUTING[offlineData.planet]?.[offlineData.intensity]?.key || 'jupiter',
-          level: offlineData.level || 'NEW_RECRUIT',
-          status: 'LAUNCHED',
-          created_at: new Date().toISOString(),
-          scan_count: 1,
-        })
+        buildOfflinePass(offlineData)
+        return
       }
       setLoading(false)
     }
+
+    function buildOfflinePass(od: OfflinePassData) {
+      const planet = od.planet
+      const intensity = od.intensity
+      const rec = ROUTING[planet]?.[intensity]
+      setPass({
+        id: 'offline',
+        name: od.name,
+        planet,
+        intensity,
+        recommendation: rec?.key || 'jupiter',
+        level: od.level || 'NEW_RECRUIT',
+        status: 'LAUNCHED',
+        created_at: new Date().toISOString(),
+        scan_count: 1,
+      })
+      setLoading(false)
+    }
+
     load()
   }, [userId, offlineData])
 
-  // #5 Share handler
-  const handleShare = async () => {
-    const shareUrl = window.location.href
-    const shareText = `I just scanned OVERRIDE ${PLANET_NAMES[pass?.planet || 'mars']} by SpaceShip Strains 🚀 Mission Briefing boarding pass issued. LA 2026.`
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'OVERRIDE™ Boarding Pass', text: shareText, url: shareUrl })
-      } catch {}
-    } else {
-      // Fallback — copy to clipboard
-      try {
-        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      } catch {}
-    }
-  }
-
+  // #6 Handle loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-[#060608] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="text-4xl animate-bounce">🚀</div>
+        <div className="flex flex-col items-center gap-5">
+          <div className="text-5xl animate-bounce">🚀</div>
+          <div className="w-48 h-0.5 relative overflow-hidden bg-white/10">
+            <div className="absolute inset-y-0 left-0 w-full"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.8), transparent)', animation: 'scan 1.5s linear infinite' }} />
+          </div>
           <p className="text-[0.48rem] tracking-[0.25em] uppercase text-white/30">LOADING PASS...</p>
         </div>
+        <style>{`@keyframes scan { 0% { transform: translateX(-100%) } 100% { transform: translateX(100%) } }`}</style>
       </div>
     )
   }
@@ -168,11 +169,16 @@ export default function BoardingPassClient({
     )
   }
 
-  const planet = pass.planet || 'jupiter'
+  // #1 #5 Use current session planet+intensity if provided, else fall back to Supabase data
+  const planet = currentPlanet || pass.planet || 'jupiter'
+  const intensity = currentIntensity || pass.intensity || 'perfect'
+
   const pc = PLANET_COLORS[planet] || PLANET_COLORS.jupiter
-  const rec = ROUTING[planet]?.[pass.intensity || 'perfect']
-  const recPlanet = pass.recommendation || rec?.key || 'jupiter'
-  const recData = Object.values(ROUTING[planet] || {}).find(r => r.key === recPlanet) || rec
+  // Use current session routing — not stale Supabase data
+  const rec = ROUTING[planet]?.[intensity]
+  const recPlanet = rec?.key || 'jupiter'
+  const recData = rec
+
   const flightCode = `${PLANET_CODES[planet] || 'SS-???'}-${pass.id.slice(-4).toUpperCase()}`
   const passDate = new Date(pass.created_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric'
@@ -180,14 +186,39 @@ export default function BoardingPassClient({
   const levelDisplay = LEVEL_DISPLAY[pass.level] || 'NEW RECRUIT — ECONOMY'
   const seatLetter = String.fromCharCode(65 + (pass.id.charCodeAt(0) % 6))
   const seatNum = (pass.id.charCodeAt(1) % 30) + 1
-  // #9 Scan count
   const scanCount = pass.scan_count || 1
+
+  // #9 Progress bar — 20% per core planet visited, starts at 20% for first scan
+  const visitedCorePlanets = visitedPlanets.filter(p => CORE_PLANETS.includes(p))
+  // Ensure at least 1 filled segment (current planet counts)
+  const filledSegments = Math.max(1, visitedCorePlanets.length)
 
   const upgradeMessages: Record<string, string> = {
     NEW_RECRUIT:   'Scan OVERRIDE again to unlock Crew Member — Business Class and get dispensary restock notifications.',
     CREW_MEMBER:   'One more scan to unlock Inner Circle — First Class. Paradise drops 24 hours early.',
     INNER_CIRCLE:  'One more scan to reach First Contact — Private Charter. Paradise 72hrs early.',
     FIRST_CONTACT: 'You are at the top of the orbit. First Contact — Paradise before everyone.',
+  }
+
+  const handleShare = async () => {
+    const shareUrl = window.location.href
+    const shareText = `I just boarded OVERRIDE ${PLANET_NAMES[planet]} by SpaceShip Strains 🚀 Mission Briefing activated. LA 2026.`
+    if (navigator.share) {
+      try { await navigator.share({ title: 'OVERRIDE™ Boarding Pass', text: shareText, url: shareUrl }) } catch {}
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {}
+    }
+  }
+
+  // #8 SCAN NEW PLANET — clear state properly
+  const handleScanNew = () => {
+    localStorage.removeItem('override_last_intensity')
+    localStorage.removeItem('override_last_rec')
+    router.push('/mission')
   }
 
   return (
@@ -200,11 +231,11 @@ export default function BoardingPassClient({
         ))}
       </div>
 
-      {/* #8 Dramatic planet background */}
+      {/* Planet background */}
       <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000"
         style={{ background: PLANET_BG[planet] || PLANET_BG.jupiter }} />
 
-      {/* #8 Large faded planet emoji */}
+      {/* Large faded planet emoji */}
       <div className="fixed right-[-60px] top-[10%] z-0 pointer-events-none select-none"
         style={{ fontSize: '280px', opacity: 0.06, filter: 'blur(2px)', lineHeight: 1 }}>
         {PLANET_EMOJIS[planet]}
@@ -220,7 +251,8 @@ export default function BoardingPassClient({
             </span>
             <span className="text-[0.42rem] tracking-[0.2em] uppercase flex items-center gap-1.5"
               style={{ color: 'rgba(80,255,128,0.8)' }}>
-              <span className="w-1.5 h-1.5 rounded-full blink" style={{ background: 'rgba(80,255,128,0.8)', boxShadow: '0 0 5px rgba(80,255,128,0.7)' }} />
+              <span className="w-1.5 h-1.5 rounded-full blink"
+                style={{ background: 'rgba(80,255,128,0.8)', boxShadow: '0 0 5px rgba(80,255,128,0.7)' }} />
               AUTHORIZED
             </span>
           </div>
@@ -236,15 +268,45 @@ export default function BoardingPassClient({
             BOARDING<br />PASS ISSUED
           </h1>
 
-          {/* ═══ BOARDING PASS ═══ */}
-          <div ref={passRef} className="w-full relative overflow-hidden rounded-xl"
+          {/* #9 PLANET PROGRESS BAR — 5 segments, 20% each */}
+          <div className="w-full flex flex-col gap-1.5">
+            <div className="flex gap-1.5">
+              {CORE_PLANETS.map((p, idx) => {
+                const isVisited = visitedCorePlanets.includes(p)
+                const isCurrent = p === planet
+                const pColor = PLANET_COLORS[p]?.accent || '#00d4ff'
+                return (
+                  <div key={p} className="flex-1 flex flex-col gap-1 items-center">
+                    <div className="w-full h-1.5 rounded-sm transition-all duration-700"
+                      style={{
+                        background: isCurrent
+                          ? pColor
+                          : isVisited
+                          ? `${pColor}60`
+                          : 'rgba(255,255,255,0.07)',
+                        boxShadow: isCurrent ? `0 0 8px ${pColor}` : 'none',
+                      }} />
+                    <span className="text-[0.32rem] tracking-[0.08em] uppercase"
+                      style={{ color: isCurrent ? pColor : isVisited ? `${pColor}80` : 'rgba(255,255,255,0.2)' }}>
+                      {PLANET_NAMES[p].slice(0, 3)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[0.38rem] tracking-[0.12em] uppercase text-white/20 text-right">
+              {filledSegments}/5 PLANETS VISITED
+            </p>
+          </div>
+
+          {/* BOARDING PASS CARD */}
+          <div className="w-full relative overflow-hidden rounded-xl"
             style={{
               background: 'linear-gradient(160deg, rgba(8,8,15,0.98), rgba(12,8,25,0.98))',
               border: `1px solid ${pc.accent}30`,
               boxShadow: `0 0 60px ${pc.glow}, 0 20px 60px rgba(0,0,0,0.5)`
             }}>
 
-            {/* Planet glow */}
             <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full pointer-events-none"
               style={{ background: `radial-gradient(circle, ${pc.glow}, transparent 70%)`, filter: 'blur(25px)' }} />
 
@@ -287,36 +349,22 @@ export default function BoardingPassClient({
             {/* DETAILS */}
             <div className="px-5 py-4 border-b border-white/[0.05]">
               <div className="grid grid-cols-3 gap-3">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Passenger</span>
-                  <span className="font-display font-bold text-sm tracking-[0.04em] text-white leading-tight">
-                    {pass.name.toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Flight</span>
-                  <span className="font-display font-bold text-sm tracking-[0.04em] text-white">{flightCode}</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Date</span>
-                  <span className="font-display font-bold text-xs tracking-[0.03em] text-white">{passDate}</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Class</span>
-                  <span className="text-[0.55rem] tracking-[0.04em] uppercase text-white font-bold leading-tight">{levelDisplay}</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Next Planet</span>
-                  <span className="text-[0.6rem] tracking-[0.06em] uppercase font-bold" style={{ color: pc.accent }}>
-                    {PLANET_NAMES[recPlanet] || '—'}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Status</span>
-                  <span className="text-[0.55rem] tracking-[0.06em] uppercase font-bold" style={{ color: 'rgba(80,255,128,0.8)' }}>
-                    {pass.status}
-                  </span>
-                </div>
+                {[
+                  { label: 'Passenger', value: pass.name.toUpperCase(), color: 'white' },
+                  { label: 'Flight',    value: flightCode,               color: 'white' },
+                  { label: 'Date',      value: passDate,                  color: 'white' },
+                  { label: 'Class',     value: levelDisplay,              color: 'white', small: true },
+                  { label: 'Next Planet', value: PLANET_NAMES[recPlanet] || '—', color: pc.accent },
+                  { label: 'Status',    value: pass.status,               color: 'rgba(80,255,128,0.8)' },
+                ].map(({ label, value, color, small }) => (
+                  <div key={label} className="flex flex-col gap-0.5">
+                    <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">{label}</span>
+                    <span className={`font-display font-bold leading-tight ${small ? 'text-[0.55rem]' : 'text-sm'} tracking-[0.04em]`}
+                      style={{ color }}>
+                      {value}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -338,12 +386,9 @@ export default function BoardingPassClient({
                   <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Seat</span>
                   <span className="font-display font-bold text-sm text-white">{seatLetter}{seatNum}</span>
                 </div>
-                {/* #9 Scan count */}
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Mission</span>
-                  <span className="font-display font-bold text-sm" style={{ color: pc.accent }}>
-                    {scanCount} of ∞
-                  </span>
+                  <span className="font-display font-bold text-sm" style={{ color: pc.accent }}>{scanCount} of ∞</span>
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -375,7 +420,7 @@ export default function BoardingPassClient({
             </p>
           </div>
 
-          {/* #5 SHARE BUTTON */}
+          {/* SHARE */}
           <button onClick={handleShare}
             className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70 flex items-center justify-center gap-2"
             style={{ background: `linear-gradient(135deg, ${pc.accent}30, ${pc.accent}15)`, border: `1px solid ${pc.accent}50` }}>
@@ -396,7 +441,8 @@ export default function BoardingPassClient({
             </button>
           </a>
 
-          <button onClick={() => router.push('/mission')}
+          {/* #8 SCAN NEW PLANET clears stale state */}
+          <button onClick={handleScanNew}
             className="w-full py-3.5 text-[0.58rem] tracking-[0.15em] uppercase font-mono active:opacity-70"
             style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)' }}>
             SCAN NEW PLANET →
@@ -405,7 +451,6 @@ export default function BoardingPassClient({
           <p className="text-[0.36rem] tracking-[0.18em] uppercase text-white/[0.08] text-center pb-2">
             OVERRIDE™ · SPACESHIP STRAINS™ · MISSION BRIEFING™ · LOS ANGELES · 2026
           </p>
-
         </div>
       </div>
     </div>
