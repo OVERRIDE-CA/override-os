@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   upsertUser,
@@ -32,6 +32,25 @@ const INTENSITY_OPTIONS = [
   { key: 'more',    emoji: '🚀', label: 'WANT MORE',   sub: 'Push the orbit further' },
 ]
 
+// #7 Typewriter hook
+function useTypewriter(text: string, speed = 40, start = false) {
+  const [displayed, setDisplayed] = useState('')
+  const [done, setDone] = useState(false)
+  useEffect(() => {
+    if (!start || !text) return
+    setDisplayed('')
+    setDone(false)
+    let i = 0
+    const timer = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) { clearInterval(timer); setDone(true) }
+    }, speed)
+    return () => clearInterval(timer)
+  }, [text, speed, start])
+  return { displayed, done }
+}
+
 export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
   const router = useRouter()
   const [screen, setScreen] = useState<Screen>('entry')
@@ -45,8 +64,18 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
   const [nameError, setNameError] = useState(false)
   const [emailError, setEmailError] = useState(false)
   const [stars, setStars] = useState<Array<{ x: number; y: number; r: number; o: number }>>([])
+  const [typewriterStarted, setTypewriterStarted] = useState(false)
+  // #6 Returning user name pre-fill
+  const [isReturningUser, setIsReturningUser] = useState(false)
 
-  // Generate stars client-side only
+  // #7 Typewriter for destination line
+  const activePlanet = planet || scanPlanet || ''
+  const destText = activePlanet
+    ? `DESTINATION: ${PLANET_NAMES[activePlanet]}`
+    : 'AWAITING PLANET DATA...'
+  const { displayed: typedDest, done: typeDone } = useTypewriter(destText, 45, typewriterStarted)
+
+  // Stars
   useEffect(() => {
     const s = Array.from({ length: 150 }, () => ({
       x: Math.random() * 100,
@@ -55,6 +84,8 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       o: Math.random() * 0.5 + 0.1,
     }))
     setStars(s)
+    // Start typewriter after 600ms
+    setTimeout(() => setTypewriterStarted(true), 600)
   }, [])
 
   // Set accent from scan planet
@@ -64,6 +95,19 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       setGlowColor(PLANET_COLORS[scanPlanet].glow)
     }
   }, [scanPlanet])
+
+  // #6 Pre-fill name and detect returning user
+  useEffect(() => {
+    const existingId = localStorage.getItem('override_user_id')
+    const savedName = localStorage.getItem('override_name')
+    if (existingId) {
+      setIsReturningUser(true)
+      if (savedName) setName(savedName)
+      incrementScanCount(existingId).then(result => {
+        if (result) localStorage.setItem('override_level', result.level)
+      }).catch(() => {})
+    }
+  }, [])
 
   const setAccent = useCallback((p: string) => {
     if (PLANET_COLORS[p]) {
@@ -77,37 +121,14 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
     window.scrollTo(0, 0)
   }
 
-  // Check if returning user on same device
-  useEffect(() => {
-    const existingId = localStorage.getItem('override_user_id')
-    if (existingId && screen === 'entry') {
-      incrementScanCount(existingId).then(result => {
-        if (result) {
-          localStorage.setItem('override_level', result.level)
-        }
-      }).catch(() => {})
-    }
-  }, [screen])
-
-  // STEP 1: Submit name
+  // STEP 1: Name
   const submitName = () => {
     if (!name.trim()) { setNameError(true); return }
     setNameError(false)
+    // Save name for future pre-fill
+    localStorage.setItem('override_name', name.trim())
 
-    // Check if returning user on same device — skip contact screen
-    const existingId = localStorage.getItem('override_user_id')
-    if (existingId) {
-      // Known user — skip to intensity then go straight to boarding pass
-      if (scanPlanet && PLANETS.includes(scanPlanet as Planet)) {
-        setPlanet(scanPlanet as Planet)
-        goTo('intensity')
-      } else {
-        goTo('planet')
-      }
-      return
-    }
-
-    // New user — normal flow
+    // #4 Skip planet screen if from QR URL
     if (scanPlanet && PLANETS.includes(scanPlanet as Planet)) {
       setPlanet(scanPlanet as Planet)
       goTo('intensity')
@@ -116,30 +137,26 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
     }
   }
 
-  // STEP 2: Select planet
+  // STEP 2: Planet
   const selectPlanet = (p: Planet) => {
     setPlanet(p)
     setAccent(p)
     setTimeout(() => goTo('intensity'), 300)
   }
 
-  // STEP 3: Select intensity
+  // STEP 3: Intensity
   const selectIntensity = (i: string) => {
     setIntensity(i)
     const existingId = localStorage.getItem('override_user_id')
     if (existingId) {
-      // Returning user on same device — skip contact screen
+      // Returning user same device — skip contact, go straight to boarding pass
       setTimeout(() => goTo('launching'), 300)
-      // Trigger finalize after state updates
       setTimeout(async () => {
         const finalPlanet = planet || scanPlanet || 'jupiter'
         const rec = ROUTING[finalPlanet]?.[i]
         try {
           await logEvent(existingId, 'mission_completed', {
-            planet: finalPlanet,
-            intensity: i,
-            recommendation: rec?.key,
-            returning: true,
+            planet: finalPlanet, intensity: i, recommendation: rec?.key, returning: true,
           })
           localStorage.setItem('override_planet', finalPlanet)
         } catch {}
@@ -150,25 +167,18 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
     }
   }
 
-  // STEP 4: Finalize — write to Supabase
+  // STEP 4: Finalize
   const finalize = async () => {
     const existingId = localStorage.getItem('override_user_id')
-
-    // Same device returning user — skip email, go straight to boarding pass
     if (existingId) {
       goTo('launching')
       try {
         const finalPlanet = planet || 'jupiter'
         const finalIntensity = intensity || 'perfect'
         const rec = ROUTING[finalPlanet]?.[finalIntensity]
-
         await logEvent(existingId, 'mission_completed', {
-          planet: finalPlanet,
-          intensity: finalIntensity,
-          recommendation: rec?.key,
-          returning: true,
+          planet: finalPlanet, intensity: finalIntensity, recommendation: rec?.key, returning: true,
         })
-
         localStorage.setItem('override_planet', finalPlanet)
         router.push(`/boarding-pass?id=${existingId}`)
       } catch {
@@ -177,10 +187,8 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       return
     }
 
-    // New user or different device — require email
     if (!email || !email.includes('@') || !email.includes('.')) {
-      setEmailError(true)
-      return
+      setEmailError(true); return
     }
     setEmailError(false)
     goTo('launching')
@@ -190,7 +198,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       const finalIntensity = intensity || 'perfect'
       const rec = ROUTING[finalPlanet]?.[finalIntensity]
 
-      const { user, isReturning } = await upsertUser({
+      const { user } = await upsertUser({
         name: name.trim(),
         planet: finalPlanet,
         intensity: finalIntensity,
@@ -200,31 +208,27 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       })
 
       await logEvent(user.id, 'mission_completed', {
-        planet: finalPlanet,
-        intensity: finalIntensity,
-        recommendation: rec?.key,
-        returning: isReturning,
+        planet: finalPlanet, intensity: finalIntensity, recommendation: rec?.key,
       })
 
       localStorage.setItem('override_user_id', user.id)
       localStorage.setItem('override_planet', finalPlanet)
       localStorage.setItem('override_level', user.level)
+      localStorage.setItem('override_name', name.trim())
       localStorage.setItem('override_scan_ts', new Date().toISOString())
 
       router.push(`/boarding-pass?id=${user.id}`)
-
     } catch (err) {
       console.error('Mission finalize error:', err)
       router.push(`/boarding-pass?planet=${planet}&name=${encodeURIComponent(name)}&intensity=${intensity}&offline=true`)
     }
   }
 
-  const activePlanet = planet || scanPlanet || ''
   const pc = activePlanet ? PLANET_COLORS[activePlanet] : null
 
   return (
     <div className="relative min-h-screen bg-[#060608] overflow-hidden">
-      {/* STARFIELD */}
+      {/* Stars */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         {stars.map((s, i) => (
           <div key={i} className="absolute rounded-full bg-white"
@@ -232,18 +236,16 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
         ))}
       </div>
 
-      {/* AMBIENT GLOW */}
+      {/* Ambient */}
       <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000"
         style={{ background: `radial-gradient(ellipse 80% 60% at 50% 30%, ${glowColor} 0%, transparent 70%)` }} />
 
-      {/* CONTENT */}
       <div className="relative z-10 min-h-screen flex flex-col items-center px-6 py-8 safe-top safe-bottom">
         <div className="w-full max-w-[440px] flex flex-col items-center gap-5 flex-1 justify-center">
 
-          {/* ═══ SCREEN: ENTRY ═══ */}
+          {/* ═══ ENTRY ═══ */}
           {screen === 'entry' && (
             <div className="w-full flex flex-col items-center gap-5 screen-enter">
-              {/* HUD Header */}
               <div className="w-full flex items-center justify-between pb-4 border-b border-white/[0.07]">
                 <span className="font-display font-extrabold text-lg tracking-[0.2em]">
                   OVERRIDE<sup className="text-[0.4em] opacity-40">™</sup>
@@ -255,6 +257,15 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                 </span>
               </div>
 
+              {isReturningUser && (
+                <div className="w-full px-3 py-2 border text-center"
+                  style={{ borderColor: `${accentColor}30`, background: `${accentColor}08` }}>
+                  <span className="text-[0.44rem] tracking-[0.15em] uppercase" style={{ color: accentColor }}>
+                    ↩ RETURNING CREW DETECTED
+                  </span>
+                </div>
+              )}
+
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20 text-center">
                 OVERRIDE™ SYSTEM ACCESS PORTAL
               </p>
@@ -263,17 +274,16 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                 MISSION<br />BRIEFING<sup className="text-[0.35em] opacity-35">™</sup>
               </h1>
 
-              {/* Destination box */}
+              {/* #7 Typewriter destination box */}
               <div className="w-full border relative overflow-hidden px-5 py-4 text-center sweep"
                 style={{ borderColor: `${accentColor}40`, background: 'rgba(0,0,0,0.35)' }}>
                 <span className="font-display font-extrabold text-lg tracking-[0.15em] block"
                   style={{ color: accentColor }}>
-                  {activePlanet
-                    ? `DESTINATION: ${PLANET_NAMES[activePlanet]}`
-                    : 'SCANNING DESTINATION...'}
+                  {typedDest}
+                  {!typeDone && <span className="animate-pulse">_</span>}
                 </span>
                 <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/25 mt-1 block">
-                  {activePlanet ? PLANET_SUBTITLES[activePlanet] : 'INITIALIZING PLANET PROTOCOL'}
+                  {typeDone && activePlanet ? PLANET_SUBTITLES[activePlanet] : 'INITIALIZING PLANET PROTOCOL'}
                 </span>
               </div>
 
@@ -281,8 +291,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                 SYSTEM STATUS: <span className="text-green-400/80">AWAITING CONFIRMATION</span>
               </p>
 
-              <button
-                onClick={() => goTo('name')}
+              <button onClick={() => goTo('name')}
                 className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white transition-opacity active:opacity-70"
                 style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
                 ▶ BEGIN BRIEFING
@@ -294,26 +303,22 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
             </div>
           )}
 
-          {/* ═══ SCREEN: NAME ═══ */}
+          {/* ═══ NAME ═══ */}
           {screen === 'name' && (
             <div className="w-full flex flex-col items-center gap-5 screen-enter">
-              {/* Progress */}
               <div className="w-full flex gap-1">
                 {[0,1,2,3].map(i => (
                   <div key={i} className="flex-1 h-0.5 transition-all duration-300"
                     style={{ background: i === 0 ? accentColor : 'rgba(255,255,255,0.07)' }} />
                 ))}
               </div>
-
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 01 · IDENTITY VERIFICATION</p>
-
               <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
-                What should we<br />call you?
+                {isReturningUser ? 'Welcome back.' : 'What should we call you?'}
               </h2>
               <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">
-                Crew designation required for clearance
+                {isReturningUser ? 'Confirm your designation to continue' : 'Crew designation required for clearance'}
               </p>
-
               <div className="w-full">
                 <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-2 block">// DESIGNATION</span>
                 <input
@@ -325,12 +330,11 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                   autoComplete="given-name"
                   autoCorrect="off"
                   spellCheck={false}
-                  className={`w-full bg-black/40 text-white font-mono text-sm py-4 px-4 outline-none placeholder:text-white/20 placeholder:text-xs transition-all ${nameError ? 'border-b-2 border-red-400/70' : 'border-b-2'}`}
-                  style={{ borderColor: nameError ? 'rgba(255,80,80,0.7)' : accentColor, borderTop: '1px solid rgba(255,255,255,0.1)', borderLeft: '1px solid rgba(255,255,255,0.1)', borderRight: '1px solid rgba(255,255,255,0.1)' }}
+                  className="w-full bg-black/40 text-white font-mono text-sm py-4 px-4 outline-none placeholder:text-white/20 placeholder:text-xs transition-all border border-white/10"
+                  style={{ borderBottom: `2px solid ${nameError ? 'rgba(255,80,80,0.7)' : accentColor}` }}
                   autoFocus
                 />
               </div>
-
               <button onClick={submitName}
                 className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
                 style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
@@ -339,7 +343,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
             </div>
           )}
 
-          {/* ═══ SCREEN: PLANET ═══ */}
+          {/* ═══ PLANET ═══ */}
           {screen === 'planet' && (
             <div className="w-full flex flex-col items-center gap-4 screen-enter">
               <div className="w-full flex gap-1">
@@ -348,17 +352,14 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                     style={{ background: i <= 1 ? accentColor : 'rgba(255,255,255,0.07)' }} />
                 ))}
               </div>
-
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 02 · DESTINATION SELECTION</p>
-
               <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
                 Which planet did you<br />just experience?
               </h2>
-
               <div className="w-full flex flex-col gap-2.5">
                 {PLANETS.map(p => (
                   <button key={p} onClick={() => selectPlanet(p)}
-                    className="w-full flex items-center gap-3 py-4 px-4 text-left transition-all active:opacity-70 border border-white/[0.07] bg-white/[0.02] hover:border-white/20"
+                    className="w-full flex items-center gap-3 py-4 px-4 text-left transition-all active:opacity-70 border border-white/[0.07] bg-white/[0.02]"
                     style={planet === p ? { borderColor: `${PLANET_COLORS[p].accent}60`, background: 'rgba(0,0,0,0.3)', color: 'white' } : { color: 'rgba(255,255,255,0.55)' }}>
                     <span className="text-xl flex-shrink-0">{PLANET_INFO[p].emoji}</span>
                     <div className="flex flex-col">
@@ -372,7 +373,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
             </div>
           )}
 
-          {/* ═══ SCREEN: INTENSITY ═══ */}
+          {/* ═══ INTENSITY ═══ */}
           {screen === 'intensity' && (
             <div className="w-full flex flex-col items-center gap-5 screen-enter">
               <div className="w-full flex gap-1">
@@ -381,16 +382,13 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                     style={{ background: i <= 2 ? accentColor : 'rgba(255,255,255,0.07)' }} />
                 ))}
               </div>
-
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 03 · ACCESS CLASSIFICATION</p>
-
               <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
                 How was the<br />intensity?
               </h2>
               <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">
                 This routes your next destination
               </p>
-
               <div className="w-full flex flex-col gap-2.5">
                 {INTENSITY_OPTIONS.map(opt => (
                   <button key={opt.key} onClick={() => selectIntensity(opt.key)}
@@ -408,7 +406,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
             </div>
           )}
 
-          {/* ═══ SCREEN: CONTACT ═══ */}
+          {/* ═══ CONTACT ═══ */}
           {screen === 'contact' && (
             <div className="w-full flex flex-col items-center gap-5 screen-enter">
               <div className="w-full flex gap-1">
@@ -416,57 +414,45 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                   <div key={i} className="flex-1 h-0.5" style={{ background: accentColor }} />
                 ))}
               </div>
-
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 04 · CLEARANCE FINALIZATION</p>
-
               <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
                 Finalize your<br />clearance
               </h2>
               <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">
                 Required to receive your boarding pass
               </p>
-
               <div className="w-full flex flex-col gap-3">
                 <div>
                   <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-1.5 block">// EMAIL — REQUIRED</span>
-                  <input
-                    type="email"
-                    value={email}
+                  <input type="email" value={email}
                     onChange={e => { setEmail(e.target.value); setEmailError(false) }}
                     onKeyDown={e => e.key === 'Enter' && finalize()}
-                    placeholder="YOUR@EMAIL.COM"
-                    autoComplete="email"
-                    className={`w-full bg-black/40 text-white font-mono text-sm py-3.5 px-4 outline-none placeholder:text-white/18 placeholder:text-xs transition-all border border-white/10`}
+                    placeholder="YOUR@EMAIL.COM" autoComplete="email"
+                    className="w-full bg-black/40 text-white font-mono text-sm py-3.5 px-4 outline-none placeholder:text-white/18 placeholder:text-xs border border-white/10"
                     style={{ borderBottom: `2px solid ${emailError ? 'rgba(255,80,80,0.7)' : accentColor}` }}
                   />
                 </div>
                 <div>
                   <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-1.5 block">// PHONE — OPTIONAL</span>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    placeholder="+1 (000) 000-0000"
-                    autoComplete="tel"
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                    placeholder="+1 (000) 000-0000" autoComplete="tel"
                     className="w-full bg-black/40 text-white font-mono text-sm py-3.5 px-4 outline-none placeholder:text-white/18 placeholder:text-xs border border-white/10"
                     style={{ borderBottom: `2px solid ${accentColor}60` }}
                   />
                 </div>
               </div>
-
               <button onClick={finalize}
                 className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
                 style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
                 FINALIZE CLEARANCE →
               </button>
-
               <p className="text-[0.38rem] tracking-[0.1em] uppercase text-white/15 text-center leading-relaxed">
                 21+ · California · No Spam · Reply STOP to unsubscribe
               </p>
             </div>
           )}
 
-          {/* ═══ SCREEN: LAUNCHING ═══ */}
+          {/* ═══ LAUNCHING ═══ */}
           {screen === 'launching' && (
             <div className="w-full flex flex-col items-center gap-6 screen-enter">
               <div className="text-6xl animate-bounce">🚀</div>

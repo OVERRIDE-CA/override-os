@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getUserById,
@@ -20,6 +20,21 @@ const PLANET_PORT_CODES: Record<string, string> = {
   moonrock: 'MR ',
 }
 
+// #8 Planet background SVG gradients
+const PLANET_BG: Record<string, string> = {
+  mars:     'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,72,32,0.25) 0%, rgba(180,30,10,0.1) 40%, transparent 70%)',
+  jupiter:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(240,180,40,0.2) 0%, rgba(180,120,20,0.08) 40%, transparent 70%)',
+  saturn:   'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(196,168,74,0.2) 0%, rgba(140,110,40,0.08) 40%, transparent 70%)',
+  venus:    'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,100,180,0.2) 0%, rgba(200,60,130,0.08) 40%, transparent 70%)',
+  neptune:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(64,96,255,0.25) 0%, rgba(30,50,200,0.1) 40%, transparent 70%)',
+  moonrock: 'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(180,100,255,0.25) 0%, rgba(120,50,200,0.1) 40%, transparent 70%)',
+}
+
+// #8 Large faded planet emoji positions
+const PLANET_EMOJIS: Record<string, string> = {
+  mars: '🔴', jupiter: '🟡', saturn: '🪐', venus: '✨', neptune: '🌊', moonrock: '🌙'
+}
+
 interface PassData {
   id: string
   name: string
@@ -29,6 +44,7 @@ interface PassData {
   level: string
   status: string
   created_at: string
+  scan_count: number
   email?: string
 }
 
@@ -47,11 +63,13 @@ export default function BoardingPassClient({
   offlineData?: OfflinePassData
 }) {
   const router = useRouter()
+  const passRef = useRef<HTMLDivElement>(null)
   const [pass, setPass] = useState<PassData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [shareSupported, setShareSupported] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [stars, setStars] = useState<Array<{ x: number; y: number; r: number; o: number }>>([])
 
-  // Stars
   useEffect(() => {
     setStars(Array.from({ length: 140 }, () => ({
       x: Math.random() * 100,
@@ -59,9 +77,10 @@ export default function BoardingPassClient({
       r: Math.random() * 1.1 + 0.2,
       o: Math.random() * 0.5 + 0.1,
     })))
+    // #5 Check if native share is supported
+    setShareSupported(!!navigator.share)
   }, [])
 
-  // Load pass from Supabase
   useEffect(() => {
     async function load() {
       if (userId) {
@@ -69,7 +88,6 @@ export default function BoardingPassClient({
           const data = await getUserById(userId)
           setPass(data)
         } catch {
-          // Fall back to offline if Supabase fails
           if (offlineData) {
             setPass({
               id: 'offline',
@@ -80,6 +98,7 @@ export default function BoardingPassClient({
               level: offlineData.level || 'NEW_RECRUIT',
               status: 'LAUNCHED',
               created_at: new Date().toISOString(),
+              scan_count: 1,
             })
           }
         }
@@ -93,12 +112,32 @@ export default function BoardingPassClient({
           level: offlineData.level || 'NEW_RECRUIT',
           status: 'LAUNCHED',
           created_at: new Date().toISOString(),
+          scan_count: 1,
         })
       }
       setLoading(false)
     }
     load()
   }, [userId, offlineData])
+
+  // #5 Share handler
+  const handleShare = async () => {
+    const shareUrl = window.location.href
+    const shareText = `I just scanned OVERRIDE ${PLANET_NAMES[pass?.planet || 'mars']} by SpaceShip Strains 🚀 Mission Briefing boarding pass issued. LA 2026.`
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'OVERRIDE™ Boarding Pass', text: shareText, url: shareUrl })
+      } catch {}
+    } else {
+      // Fallback — copy to clipboard
+      try {
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {}
+    }
+  }
 
   if (loading) {
     return (
@@ -134,7 +173,6 @@ export default function BoardingPassClient({
   const rec = ROUTING[planet]?.[pass.intensity || 'perfect']
   const recPlanet = pass.recommendation || rec?.key || 'jupiter'
   const recData = Object.values(ROUTING[planet] || {}).find(r => r.key === recPlanet) || rec
-  const portCode = PLANET_PORT_CODES[planet] || '???'
   const flightCode = `${PLANET_CODES[planet] || 'SS-???'}-${pass.id.slice(-4).toUpperCase()}`
   const passDate = new Date(pass.created_at).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric'
@@ -142,6 +180,8 @@ export default function BoardingPassClient({
   const levelDisplay = LEVEL_DISPLAY[pass.level] || 'NEW RECRUIT — ECONOMY'
   const seatLetter = String.fromCharCode(65 + (pass.id.charCodeAt(0) % 6))
   const seatNum = (pass.id.charCodeAt(1) % 30) + 1
+  // #9 Scan count
+  const scanCount = pass.scan_count || 1
 
   const upgradeMessages: Record<string, string> = {
     NEW_RECRUIT:   'Scan OVERRIDE again to unlock Crew Member — Business Class and get dispensary restock notifications.',
@@ -160,9 +200,15 @@ export default function BoardingPassClient({
         ))}
       </div>
 
-      {/* Ambient */}
+      {/* #8 Dramatic planet background */}
       <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000"
-        style={{ background: `radial-gradient(ellipse 80% 60% at 50% 30%, ${pc.glow} 0%, transparent 70%)` }} />
+        style={{ background: PLANET_BG[planet] || PLANET_BG.jupiter }} />
+
+      {/* #8 Large faded planet emoji */}
+      <div className="fixed right-[-60px] top-[10%] z-0 pointer-events-none select-none"
+        style={{ fontSize: '280px', opacity: 0.06, filter: 'blur(2px)', lineHeight: 1 }}>
+        {PLANET_EMOJIS[planet]}
+      </div>
 
       <div className="relative z-10 flex flex-col items-center px-5 py-8 safe-top safe-bottom">
         <div className="w-full max-w-[440px] flex flex-col items-center gap-4">
@@ -190,21 +236,20 @@ export default function BoardingPassClient({
             BOARDING<br />PASS ISSUED
           </h1>
 
-          {/* ═══ THE BOARDING PASS ═══ */}
-          <div className="w-full relative overflow-hidden rounded-xl"
+          {/* ═══ BOARDING PASS ═══ */}
+          <div ref={passRef} className="w-full relative overflow-hidden rounded-xl"
             style={{
               background: 'linear-gradient(160deg, rgba(8,8,15,0.98), rgba(12,8,25,0.98))',
               border: `1px solid ${pc.accent}30`,
               boxShadow: `0 0 60px ${pc.glow}, 0 20px 60px rgba(0,0,0,0.5)`
             }}>
 
-            {/* Planet glow decoration */}
+            {/* Planet glow */}
             <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full pointer-events-none"
               style={{ background: `radial-gradient(circle, ${pc.glow}, transparent 70%)`, filter: 'blur(25px)' }} />
 
-            {/* TOP — Route */}
+            {/* TOP */}
             <div className="px-5 py-5 border-b border-white/[0.06] relative">
-              {/* Airline row */}
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <div className="font-display font-extrabold text-xl tracking-[0.18em] text-white">
@@ -213,7 +258,7 @@ export default function BoardingPassClient({
                   <div className="text-[0.38rem] tracking-[0.2em] uppercase text-white/22">SPACESHIP STRAINS™</div>
                 </div>
                 <div className="text-[0.38rem] tracking-[0.25em] uppercase px-2.5 py-1"
-                  style={{ border: `1px solid ${pc.accent}30`, color: `${pc.accent}`, background: 'rgba(0,0,0,0.3)' }}>
+                  style={{ border: `1px solid ${pc.accent}30`, color: pc.accent, background: 'rgba(0,0,0,0.3)' }}>
                   BOARDING PASS
                 </div>
               </div>
@@ -229,17 +274,17 @@ export default function BoardingPassClient({
                   <div className="w-full h-px" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px)' }} />
                 </div>
                 <div className="flex flex-col items-center gap-1">
-                 <span className="font-display font-extrabold text-3xl tracking-[0.06em]" style={{ color: pc.accent }}>
-  {PLANET_NAMES[planet]}
-</span>
-                  <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/30">
+                  <span className="font-display font-extrabold text-3xl tracking-[0.06em]" style={{ color: pc.accent }}>
                     {PLANET_NAMES[planet]}
+                  </span>
+                  <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/30">
+                    {PLANET_PORT_CODES[planet]}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* MIDDLE — Details */}
+            {/* DETAILS */}
             <div className="px-5 py-4 border-b border-white/[0.05]">
               <div className="grid grid-cols-3 gap-3">
                 <div className="flex flex-col gap-0.5">
@@ -284,7 +329,7 @@ export default function BoardingPassClient({
 
             {/* STUB */}
             <div className="px-5 py-4">
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-3 gap-3 mb-3">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Gate</span>
                   <span className="font-display font-bold text-sm text-white">SS-01</span>
@@ -293,9 +338,14 @@ export default function BoardingPassClient({
                   <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Seat</span>
                   <span className="font-display font-bold text-sm text-white">{seatLetter}{seatNum}</span>
                 </div>
+                {/* #9 Scan count */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Mission</span>
+                  <span className="font-display font-bold text-sm" style={{ color: pc.accent }}>
+                    {scanCount} of ∞
+                  </span>
+                </div>
               </div>
-
-              {/* Barcode */}
               <div className="flex flex-col gap-1.5">
                 <div className="w-full h-11 rounded-sm opacity-[0.12]"
                   style={{ background: 'repeating-linear-gradient(90deg, white 0, white 1.5px, transparent 1.5px, transparent 3px, white 3px, white 4px, transparent 4px, transparent 6px, white 6px, white 7px, transparent 7px, transparent 10px, white 10px, white 12px, transparent 12px, transparent 14px)' }} />
@@ -325,7 +375,13 @@ export default function BoardingPassClient({
             </p>
           </div>
 
-          {/* CTAs */}
+          {/* #5 SHARE BUTTON */}
+          <button onClick={handleShare}
+            className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70 flex items-center justify-center gap-2"
+            style={{ background: `linear-gradient(135deg, ${pc.accent}30, ${pc.accent}15)`, border: `1px solid ${pc.accent}50` }}>
+            {copied ? '✓ COPIED TO CLIPBOARD' : shareSupported ? '↑ SHARE YOUR BOARDING PASS' : '↑ COPY BOARDING PASS LINK'}
+          </button>
+
           <a href="https://spaceshipstrains.com" className="w-full">
             <button className="w-full py-4 text-[0.6rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
               style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${pc.accent}40` }}>
