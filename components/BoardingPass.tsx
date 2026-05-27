@@ -229,9 +229,9 @@ export default function BoardingPassClient({
                   <div className="w-full h-px" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px)' }} />
                 </div>
                 <div className="flex flex-col items-center gap-1">
-                  <span className="font-display font-extrabold text-3xl tracking-[0.06em]" style={{ color: pc.accent }}>
-                    {portCode}
-                  </span>
+                 <span className="font-display font-extrabold text-3xl tracking-[0.06em]" style={{ color: pc.accent }}>
+  {PLANET_NAMES[planet]}
+</span>
                   <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/30">
                     {PLANET_NAMES[planet]}
                   </span>
