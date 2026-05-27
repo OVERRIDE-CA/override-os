@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  supabase,
-  createUser,
-  logEvent,
+  upsertUser,
   incrementScanCount,
+  logEvent,
   PLANET_COLORS,
   PLANET_NAMES,
   PLANET_SUBTITLES,
@@ -78,11 +77,10 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
     window.scrollTo(0, 0)
   }
 
-  // Check if returning user
+  // Check if returning user on same device
   useEffect(() => {
     const existingId = localStorage.getItem('override_user_id')
     if (existingId && screen === 'entry') {
-      // Returning user — increment scan count
       incrementScanCount(existingId).then(result => {
         if (result) {
           localStorage.setItem('override_level', result.level)
@@ -95,7 +93,21 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
   const submitName = () => {
     if (!name.trim()) { setNameError(true); return }
     setNameError(false)
-    // If planet came from QR URL, skip planet screen
+
+    // Check if returning user on same device — skip contact screen
+    const existingId = localStorage.getItem('override_user_id')
+    if (existingId) {
+      // Known user — skip to intensity then go straight to boarding pass
+      if (scanPlanet && PLANETS.includes(scanPlanet as Planet)) {
+        setPlanet(scanPlanet as Planet)
+        goTo('intensity')
+      } else {
+        goTo('planet')
+      }
+      return
+    }
+
+    // New user — normal flow
     if (scanPlanet && PLANETS.includes(scanPlanet as Planet)) {
       setPlanet(scanPlanet as Planet)
       goTo('intensity')
@@ -114,11 +126,58 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
   // STEP 3: Select intensity
   const selectIntensity = (i: string) => {
     setIntensity(i)
-    setTimeout(() => goTo('contact'), 300)
+    const existingId = localStorage.getItem('override_user_id')
+    if (existingId) {
+      // Returning user on same device — skip contact screen
+      setTimeout(() => goTo('launching'), 300)
+      // Trigger finalize after state updates
+      setTimeout(async () => {
+        const finalPlanet = planet || scanPlanet || 'jupiter'
+        const rec = ROUTING[finalPlanet]?.[i]
+        try {
+          await logEvent(existingId, 'mission_completed', {
+            planet: finalPlanet,
+            intensity: i,
+            recommendation: rec?.key,
+            returning: true,
+          })
+          localStorage.setItem('override_planet', finalPlanet)
+        } catch {}
+        router.push(`/boarding-pass?id=${existingId}`)
+      }, 500)
+    } else {
+      setTimeout(() => goTo('contact'), 300)
+    }
   }
 
   // STEP 4: Finalize — write to Supabase
   const finalize = async () => {
+    const existingId = localStorage.getItem('override_user_id')
+
+    // Same device returning user — skip email, go straight to boarding pass
+    if (existingId) {
+      goTo('launching')
+      try {
+        const finalPlanet = planet || 'jupiter'
+        const finalIntensity = intensity || 'perfect'
+        const rec = ROUTING[finalPlanet]?.[finalIntensity]
+
+        await logEvent(existingId, 'mission_completed', {
+          planet: finalPlanet,
+          intensity: finalIntensity,
+          recommendation: rec?.key,
+          returning: true,
+        })
+
+        localStorage.setItem('override_planet', finalPlanet)
+        router.push(`/boarding-pass?id=${existingId}`)
+      } catch {
+        router.push(`/boarding-pass?id=${existingId}`)
+      }
+      return
+    }
+
+    // New user or different device — require email
     if (!email || !email.includes('@') || !email.includes('.')) {
       setEmailError(true)
       return
@@ -131,8 +190,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       const finalIntensity = intensity || 'perfect'
       const rec = ROUTING[finalPlanet]?.[finalIntensity]
 
-      // Create user in Supabase
-      const user = await createUser({
+      const { user, isReturning } = await upsertUser({
         name: name.trim(),
         planet: finalPlanet,
         intensity: finalIntensity,
@@ -141,29 +199,22 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
         phone: phone || undefined,
       })
 
-      // Log mission completed event
       await logEvent(user.id, 'mission_completed', {
         planet: finalPlanet,
         intensity: finalIntensity,
         recommendation: rec?.key,
-        scan_planet: scanPlanet || null,
+        returning: isReturning,
       })
 
-      // Persist to localStorage
       localStorage.setItem('override_user_id', user.id)
       localStorage.setItem('override_planet', finalPlanet)
       localStorage.setItem('override_level', user.level)
       localStorage.setItem('override_scan_ts', new Date().toISOString())
 
-      // Navigate to boarding pass
       router.push(`/boarding-pass?id=${user.id}`)
 
     } catch (err) {
       console.error('Mission finalize error:', err)
-      // Still navigate — don't block user
-      const fallbackId = `local_${Date.now()}`
-      localStorage.setItem('override_user_id', fallbackId)
-      localStorage.setItem('override_planet', planet || 'jupiter')
       router.push(`/boarding-pass?planet=${planet}&name=${encodeURIComponent(name)}&intensity=${intensity}&offline=true`)
     }
   }

@@ -165,3 +165,64 @@ export async function incrementScanCount(userId: string) {
   }
   return null
 }
+
+// Find existing user by email and increment — or create new
+export async function upsertUser(data: {
+  name: string
+  planet: string
+  intensity?: string
+  recommendation?: string
+  email: string
+  phone?: string
+}) {
+  // Check if email already exists
+  const { data: existing } = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', data.email)
+    .single()
+
+  if (existing) {
+    // Returning user — increment scan count and update planet
+    const newCount = (existing.scan_count || 1) + 1
+    let newLevel = 'NEW_RECRUIT'
+    if (newCount >= 4) newLevel = 'FIRST_CONTACT'
+    else if (newCount >= 3) newLevel = 'INNER_CIRCLE'
+    else if (newCount >= 2) newLevel = 'CREW_MEMBER'
+
+    const { data: updated } = await supabase
+      .from('users')
+      .update({
+        planet: data.planet,
+        intensity: data.intensity || null,
+        recommendation: data.recommendation || null,
+        scan_count: newCount,
+        level: newLevel,
+      })
+      .eq('id', existing.id)
+      .select()
+      .single()
+
+    return { user: updated || existing, isReturning: true }
+  }
+
+  // New user — create record
+  const { data: newUser, error } = await supabase
+    .from('users')
+    .insert({
+      name: data.name,
+      planet: data.planet,
+      intensity: data.intensity || null,
+      recommendation: data.recommendation || null,
+      email: data.email,
+      phone: data.phone || null,
+      level: 'NEW_RECRUIT',
+      status: 'LAUNCHED',
+      scan_count: 1,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return { user: newUser, isReturning: false }
+}
