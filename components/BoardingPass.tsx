@@ -6,32 +6,46 @@ import {
   getUserById,
   PLANET_COLORS,
   PLANET_NAMES,
-  PLANET_SHORT,
   PLANET_CODES,
   ROUTING,
   LEVEL_DISPLAY,
 } from '@/lib/supabase'
 
-const PLANET_PORT_CODES: Record<string, string> = {
-  mars: 'MRS', jupiter: 'JUP', saturn: 'SAT',
-  venus: 'VEN', neptune: 'NEP', moonrock: 'MR ',
-}
-
-const PLANET_BG: Record<string, string> = {
-  mars:     'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,72,32,0.25) 0%, rgba(180,30,10,0.1) 40%, transparent 70%)',
-  jupiter:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(240,180,40,0.2) 0%, rgba(180,120,20,0.08) 40%, transparent 70%)',
-  saturn:   'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(196,168,74,0.2) 0%, rgba(140,110,40,0.08) 40%, transparent 70%)',
-  venus:    'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,100,180,0.2) 0%, rgba(200,60,130,0.08) 40%, transparent 70%)',
-  neptune:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(64,96,255,0.25) 0%, rgba(30,50,200,0.1) 40%, transparent 70%)',
-  moonrock: 'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(180,100,255,0.25) 0%, rgba(120,50,200,0.1) 40%, transparent 70%)',
+const PLANET_SHORT: Record<string, string> = {
+  mars: 'MARS', jupiter: 'JUP', saturn: 'SAT',
+  venus: 'VEN', neptune: 'NEP', moonrock: 'REST',
 }
 
 const PLANET_EMOJIS: Record<string, string> = {
-  mars: '🔴', jupiter: '🟡', saturn: '🪐', venus: '✨', neptune: '🌊', moonrock: '🌙',
+  mars: '🔴', jupiter: '🟡', saturn: '🪐',
+  venus: '✨', neptune: '🌊', moonrock: '🌙',
 }
 
-// 5 core planets for progress bar
+const PLANET_BG: Record<string, string> = {
+  mars:     'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,72,32,0.18) 0%, transparent 65%)',
+  jupiter:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(240,180,40,0.14) 0%, transparent 65%)',
+  saturn:   'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(196,168,74,0.14) 0%, transparent 65%)',
+  venus:    'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(255,100,180,0.14) 0%, transparent 65%)',
+  neptune:  'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(64,96,255,0.18) 0%, transparent 65%)',
+  moonrock: 'radial-gradient(ellipse 120% 80% at 80% 50%, rgba(180,100,255,0.18) 0%, transparent 65%)',
+}
+
 const CORE_PLANETS = ['mars', 'jupiter', 'saturn', 'venus', 'neptune']
+
+const STATE_DISPLAY: Record<string, { label: string; color: string }> = {
+  NEW_USER:              { label: 'NEW USER',           color: 'rgba(0,212,255,0.7)' },
+  VERIFIED_USER:         { label: 'VERIFIED',           color: 'rgba(80,255,128,0.8)' },
+  FIRST_MISSION_COMPLETE:{ label: 'MISSION COMPLETE',   color: '#f0b428' },
+  ORBIT_TIER_1:          { label: 'ORBIT TIER 1',       color: '#ff64b4' },
+  ORBIT_TIER_2:          { label: 'ORBIT TIER 2',       color: '#b464ff' },
+  PARADISE_ELIGIBLE:     { label: '✦ PARADISE ELIGIBLE',color: '#f0b428' },
+}
+
+interface FlightRecord {
+  planet: string
+  date: string
+  intensity: string
+}
 
 interface PassData {
   id: string
@@ -40,29 +54,25 @@ interface PassData {
   intensity: string
   recommendation: string
   level: string
+  state?: string
   status: string
   created_at: string
   scan_count: number
   streak_count?: number
   home_planet?: string
   referral_code?: string
+  referral_count?: number
   paradise_access?: boolean
+  flight_history?: FlightRecord[]
   email?: string
 }
 
 interface OfflinePassData {
-  name: string
-  planet: string
-  intensity: string
-  level: string
+  name: string; planet: string; intensity: string; level: string
 }
 
 export default function BoardingPassClient({
-  userId,
-  offlineData,
-  // #1 #5 Current session planet+intensity passed from URL
-  currentPlanet,
-  currentIntensity,
+  userId, offlineData, currentPlanet, currentIntensity,
 }: {
   userId?: string
   offlineData?: OfflinePassData
@@ -72,25 +82,18 @@ export default function BoardingPassClient({
   const router = useRouter()
   const [pass, setPass] = useState<PassData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [shareSupported, setShareSupported] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [stars, setStars] = useState<Array<{ x: number; y: number; r: number; o: number }>>([])
-  // #9 Track visited planets from localStorage
   const [visitedPlanets, setVisitedPlanets] = useState<string[]>([])
 
   useEffect(() => {
-    setStars(Array.from({ length: 140 }, () => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      r: Math.random() * 1.1 + 0.2,
-      o: Math.random() * 0.5 + 0.1,
+    setStars(Array.from({ length: 120 }, () => ({
+      x: Math.random() * 100, y: Math.random() * 100,
+      r: Math.random() * 1.1 + 0.2, o: Math.random() * 0.4 + 0.1,
     })))
-    setShareSupported(!!navigator.share)
-
-    // Load visited planets from localStorage
     const stored = localStorage.getItem('override_visited_planets')
     const visited: string[] = stored ? JSON.parse(stored) : []
-    // Add current planet if not already there
     if (currentPlanet && !visited.includes(currentPlanet)) {
       const updated = [...visited, currentPlanet]
       localStorage.setItem('override_visited_planets', JSON.stringify(updated))
@@ -107,51 +110,40 @@ export default function BoardingPassClient({
           const data = await getUserById(userId)
           setPass(data)
         } catch {
-          if (offlineData) buildOfflinePass(offlineData)
+          if (offlineData) buildOffline(offlineData)
           else setLoading(false)
           return
         }
       } else if (offlineData) {
-        buildOfflinePass(offlineData)
+        buildOffline(offlineData)
         return
       }
       setLoading(false)
     }
-
-    function buildOfflinePass(od: OfflinePassData) {
-      const planet = od.planet
-      const intensity = od.intensity
-      const rec = ROUTING[planet]?.[intensity]
+    function buildOffline(od: OfflinePassData) {
+      const rec = ROUTING[od.planet]?.[od.intensity]
       setPass({
-        id: 'offline',
-        name: od.name,
-        planet,
-        intensity,
-        recommendation: rec?.key || 'jupiter',
-        level: od.level || 'NEW_RECRUIT',
-        status: 'LAUNCHED',
-        created_at: new Date().toISOString(),
-        scan_count: 1,
+        id: 'offline', name: od.name, planet: od.planet, intensity: od.intensity,
+        recommendation: rec?.key || 'jupiter', level: od.level || 'NEW_RECRUIT',
+        status: 'LAUNCHED', created_at: new Date().toISOString(), scan_count: 1,
       })
       setLoading(false)
     }
-
     load()
   }, [userId, offlineData])
 
-  // #6 Handle loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-[#060608] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-5">
+        <div className="flex flex-col items-center gap-4">
           <div className="text-5xl animate-bounce">🚀</div>
-          <div className="w-48 h-0.5 relative overflow-hidden bg-white/10">
-            <div className="absolute inset-y-0 left-0 w-full"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.8), transparent)', animation: 'scan 1.5s linear infinite' }} />
+          <div className="w-48 h-px relative overflow-hidden bg-white/10">
+            <div className="absolute inset-y-0 w-full"
+              style={{ background: 'linear-gradient(90deg,transparent,rgba(0,212,255,0.8),transparent)', animation: 'scan 1.5s linear infinite' }} />
           </div>
-          <p className="text-[0.48rem] tracking-[0.25em] uppercase text-white/30">LOADING PASS...</p>
+          <p className="text-[0.44rem] tracking-[0.25em] uppercase text-white/30">LOADING PASS...</p>
         </div>
-        <style>{`@keyframes scan { 0% { transform: translateX(-100%) } 100% { transform: translateX(100%) } }`}</style>
+        <style>{`@keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
       </div>
     )
   }
@@ -159,14 +151,11 @@ export default function BoardingPassClient({
   if (!pass) {
     return (
       <div className="min-h-screen bg-[#060608] flex items-center justify-center px-6">
-        <div className="max-w-[400px] w-full text-center flex flex-col gap-6">
+        <div className="max-w-[400px] w-full text-center flex flex-col gap-5">
           <h2 className="font-display font-extrabold text-2xl text-white/50">NO PASS FOUND</h2>
-          <p className="text-[0.52rem] tracking-[0.1em] uppercase text-white/20 leading-relaxed">
-            Complete a Mission Briefing scan to receive your boarding pass.
-          </p>
           <button onClick={() => router.push('/mission')}
             className="w-full py-4 text-[0.6rem] tracking-[0.18em] uppercase font-mono text-white"
-            style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: '1px solid rgba(0,212,255,0.3)' }}>
+            style={{ background: 'linear-gradient(135deg,rgba(0,40,120,0.9),rgba(50,0,100,0.9))', border: '1px solid rgba(0,212,255,0.3)' }}>
             BEGIN MISSION BRIEFING →
           </button>
         </div>
@@ -174,12 +163,9 @@ export default function BoardingPassClient({
     )
   }
 
-  // #1 #5 Use current session planet+intensity if provided, else fall back to Supabase data
   const planet = currentPlanet || pass.planet || 'jupiter'
   const intensity = currentIntensity || pass.intensity || 'perfect'
-
   const pc = PLANET_COLORS[planet] || PLANET_COLORS.jupiter
-  // Use current session routing — not stale Supabase data
   const rec = ROUTING[planet]?.[intensity]
   const recPlanet = rec?.key || 'jupiter'
   const recData = rec
@@ -189,40 +175,41 @@ export default function BoardingPassClient({
     month: 'short', day: 'numeric', year: 'numeric'
   }).toUpperCase()
   const levelDisplay = LEVEL_DISPLAY[pass.level] || 'NEW RECRUIT — ECONOMY'
-  const seatLetter = String.fromCharCode(65 + (pass.id.charCodeAt(0) % 6))
-  const seatNum = (pass.id.charCodeAt(1) % 30) + 1
   const scanCount = pass.scan_count || 1
+  const streak = pass.streak_count || 0
+  const stateInfo = STATE_DISPLAY[pass.state || 'NEW_USER'] || STATE_DISPLAY.NEW_USER
+  const visitedCore = visitedPlanets.filter(p => CORE_PLANETS.includes(p))
+  const filledSegments = Math.max(1, visitedCore.length)
 
-  // #9 Progress bar — 20% per core planet visited, starts at 20% for first scan
-  const visitedCorePlanets = visitedPlanets.filter(p => CORE_PLANETS.includes(p))
-  // Ensure at least 1 filled segment (current planet counts)
-  const filledSegments = Math.max(1, visitedCorePlanets.length)
+  // Flight history from DB or localStorage
+  const flightHistory: FlightRecord[] = pass.flight_history?.length
+    ? pass.flight_history
+    : visitedPlanets.map((p, i) => ({
+        planet: p,
+        date: new Date(Date.now() - (visitedPlanets.length - i) * 86400000 * 7).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase(),
+        intensity: 'perfect',
+      }))
 
   const upgradeMessages: Record<string, string> = {
-    NEW_RECRUIT:   'Scan OVERRIDE again to unlock Crew Member — Business Class and get dispensary restock notifications.',
-    CREW_MEMBER:   'One more scan to unlock Inner Circle — First Class. Paradise drops 24 hours early.',
-    INNER_CIRCLE:  'One more scan to reach First Contact — Private Charter. Paradise 72hrs early.',
-    FIRST_CONTACT: 'You are at the top of the orbit. First Contact — Paradise before everyone.',
+    NEW_RECRUIT:   'Scan OVERRIDE again to unlock Crew Member — Business Class.',
+    CREW_MEMBER:   'One more scan unlocks Inner Circle — First Class + Paradise early access.',
+    INNER_CIRCLE:  'One more scan reaches First Contact — Private Charter + Paradise 72hrs early.',
+    FIRST_CONTACT: 'First Contact — Private Charter. You are at the top of the orbit.',
   }
 
   const handleShare = async () => {
-    const shareUrl = window.location.href
-    const shareText = `I just boarded OVERRIDE ${PLANET_NAMES[planet]} by SpaceShip Strains 🚀 Mission Briefing activated. LA 2026.`
+    const url = `https://www.overridecannabis.com/boarding-pass?id=${pass.id}&cp=${planet}&ci=${intensity}`
+    const text = `I just boarded OVERRIDE ${PLANET_NAMES[planet]} 🚀 Mission Briefing activated. LA 2026.`
     if (navigator.share) {
-      try { await navigator.share({ title: 'OVERRIDE™ Boarding Pass', text: shareText, url: shareUrl }) } catch {}
+      try { await navigator.share({ title: 'OVERRIDE™ Boarding Pass', text, url }) } catch {}
     } else {
-      try {
-        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      } catch {}
+      await navigator.clipboard.writeText(`${text}\n${url}`)
+      setCopied(true); setTimeout(() => setCopied(false), 2000)
     }
   }
 
-  // #8 SCAN NEW PLANET — clear state properly
   const handleScanNew = () => {
     localStorage.removeItem('override_last_intensity')
-    localStorage.removeItem('override_last_rec')
     router.push('/mission')
   }
 
@@ -232,221 +219,265 @@ export default function BoardingPassClient({
       <div className="fixed inset-0 z-0 pointer-events-none">
         {stars.map((s, i) => (
           <div key={i} className="absolute rounded-full bg-white"
-            style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.r, height: s.r, opacity: s.o }} />
+            style={{ left:`${s.x}%`, top:`${s.y}%`, width:s.r, height:s.r, opacity:s.o }} />
         ))}
       </div>
 
-      {/* Planet background */}
+      {/* Planet ambient */}
       <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000"
         style={{ background: PLANET_BG[planet] || PLANET_BG.jupiter }} />
 
-      {/* Large faded planet emoji */}
-      <div className="fixed right-[-60px] top-[10%] z-0 pointer-events-none select-none"
-        style={{ fontSize: '280px', opacity: 0.06, filter: 'blur(2px)', lineHeight: 1 }}>
+      {/* Faded planet */}
+      <div className="fixed right-[-40px] top-[8%] z-0 pointer-events-none select-none"
+        style={{ fontSize: '260px', opacity: 0.05, filter: 'blur(3px)', lineHeight: 1 }}>
         {PLANET_EMOJIS[planet]}
       </div>
 
-      <div className="relative z-10 flex flex-col items-center px-5 py-8 safe-top safe-bottom">
-        <div className="w-full max-w-[440px] flex flex-col items-center gap-4">
+      {/* NAV */}
+      <div className="relative z-20 flex items-center justify-between px-5 py-3 border-b border-white/[0.06]"
+        style={{ background: 'rgba(6,6,8,0.85)', backdropFilter: 'blur(12px)' }}>
+        <span className="font-display font-extrabold text-sm tracking-[0.2em]">
+          OVERRIDE<sup className="text-[0.4em] opacity-40">™</sup>
+        </span>
+        <div className="flex items-center gap-3">
+          <a href="/mission" className="text-[0.42rem] tracking-[0.15em] uppercase text-white/30 hover:text-white/60 transition-colors">MISSION</a>
+          <a href="/budtender" className="text-[0.42rem] tracking-[0.15em] uppercase text-white/30 hover:text-white/60 transition-colors">CREW</a>
+          <span className="flex items-center gap-1 text-[0.42rem] tracking-[0.2em] uppercase"
+            style={{ color: 'rgba(80,255,128,0.8)' }}>
+            <span className="w-1.5 h-1.5 rounded-full blink" style={{ background: 'rgba(80,255,128,0.8)' }} />
+            AUTHORIZED
+          </span>
+        </div>
+      </div>
 
-          {/* Header */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-white/[0.07]">
-            <span className="font-display font-extrabold text-base tracking-[0.2em]">
-              OVERRIDE<sup className="text-[0.4em] opacity-40">™</sup>
-            </span>
-            <span className="text-[0.42rem] tracking-[0.2em] uppercase flex items-center gap-1.5"
+      <div className="relative z-10 flex flex-col items-center px-4 pt-4 pb-8 safe-bottom">
+        <div className="w-full max-w-[420px] flex flex-col items-center gap-3">
+
+          {/* TITLE */}
+          <div className="w-full text-center py-1">
+            <h1 className="font-display font-extrabold tracking-[0.06em] text-white leading-none"
+              style={{ fontSize: 'clamp(2rem, 10vw, 2.8rem)' }}>
+              BOARDING PASS
+            </h1>
+            <p className="text-[0.42rem] tracking-[0.2em] uppercase mt-1"
               style={{ color: 'rgba(80,255,128,0.8)' }}>
-              <span className="w-1.5 h-1.5 rounded-full blink"
-                style={{ background: 'rgba(80,255,128,0.8)', boxShadow: '0 0 5px rgba(80,255,128,0.7)' }} />
-              AUTHORIZED
-            </span>
-          </div>
-
-          {/* Auth badge */}
-          <div className="flex items-center gap-2 px-4 py-1.5 border text-[0.48rem] tracking-[0.22em] uppercase"
-            style={{ borderColor: 'rgba(80,255,128,0.2)', color: 'rgba(80,255,128,0.85)', background: 'rgba(80,255,128,0.04)' }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(80,255,128,0.85)' }} />
-            LAUNCH AUTHORIZED
-          </div>
-
-          <h1 className="font-display font-extrabold text-4xl tracking-[0.08em] text-center text-white leading-none">
-            BOARDING<br />PASS ISSUED
-          </h1>
-
-          {/* #9 PLANET PROGRESS BAR — 5 segments, 20% each */}
-          <div className="w-full flex flex-col gap-1.5">
-            <div className="flex gap-1.5">
-              {CORE_PLANETS.map((p, idx) => {
-                const isVisited = visitedCorePlanets.includes(p)
-                const isCurrent = p === planet
-                const pColor = PLANET_COLORS[p]?.accent || '#00d4ff'
-                return (
-                  <div key={p} className="flex-1 flex flex-col gap-1 items-center">
-                    <div className="w-full h-1.5 rounded-sm transition-all duration-700"
-                      style={{
-                        background: isCurrent
-                          ? pColor
-                          : isVisited
-                          ? `${pColor}60`
-                          : 'rgba(255,255,255,0.07)',
-                        boxShadow: isCurrent ? `0 0 8px ${pColor}` : 'none',
-                      }} />
-                    <span className="text-[0.32rem] tracking-[0.08em] uppercase"
-                      style={{ color: isCurrent ? pColor : isVisited ? `${pColor}80` : 'rgba(255,255,255,0.2)' }}>
-                      {PLANET_NAMES[p].slice(0, 3)}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-            <p className="text-[0.38rem] tracking-[0.12em] uppercase text-white/20 text-right">
-              {filledSegments}/5 PLANETS VISITED
+              ● LAUNCH AUTHORIZED · {stateInfo.label}
             </p>
           </div>
 
-          {/* BOARDING PASS CARD */}
-          <div className="w-full relative overflow-hidden rounded-xl"
+          {/* ═══ BOARDING PASS CARD — United-style ═══ */}
+          <div className="w-full rounded-2xl overflow-hidden"
             style={{
-              background: 'linear-gradient(160deg, rgba(8,8,15,0.98), rgba(12,8,25,0.98))',
-              border: `1px solid ${pc.accent}30`,
-              boxShadow: `0 0 60px ${pc.glow}, 0 20px 60px rgba(0,0,0,0.5)`
+              background: 'linear-gradient(170deg, rgba(10,10,18,0.97) 0%, rgba(14,10,28,0.97) 100%)',
+              border: `1px solid ${pc.accent}25`,
+              boxShadow: `0 0 80px ${pc.glow}, 0 24px 48px rgba(0,0,0,0.6)`,
             }}>
 
-            <div className="absolute top-[-30px] right-[-30px] w-40 h-40 rounded-full pointer-events-none"
-              style={{ background: `radial-gradient(circle, ${pc.glow}, transparent 70%)`, filter: 'blur(25px)' }} />
+            {/* HEADER BAND — airline color bar */}
+            <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${pc.accent}, ${pc.accent}80)` }} />
 
-            {/* TOP */}
-            <div className="px-5 py-5 border-b border-white/[0.06] relative">
-              <div className="flex items-start justify-between mb-4">
+            {/* TOP SECTION — route */}
+            <div className="px-5 pt-4 pb-4 border-b border-white/[0.06]">
+              {/* Airline row */}
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className="font-display font-extrabold text-xl tracking-[0.18em] text-white">
+                  <p className="font-display font-extrabold text-base tracking-[0.15em] text-white leading-none">
                     OVERRIDE<sup className="text-[0.4em] opacity-35">™</sup>
-                  </div>
-                  <div className="text-[0.38rem] tracking-[0.2em] uppercase text-white/22">SPACESHIP STRAINS™</div>
+                  </p>
+                  <p className="text-[0.36rem] tracking-[0.18em] uppercase text-white/25 mt-0.5">SPACESHIP STRAINS™</p>
                 </div>
-                <div className="text-[0.38rem] tracking-[0.25em] uppercase px-2.5 py-1"
-                  style={{ border: `1px solid ${pc.accent}30`, color: pc.accent, background: 'rgba(0,0,0,0.3)' }}>
-                  BOARDING PASS
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[0.36rem] tracking-[0.2em] uppercase px-2 py-1 rounded-sm"
+                    style={{ background: `${pc.accent}15`, color: pc.accent, border: `1px solid ${pc.accent}30` }}>
+                    BOARDING PASS
+                  </span>
+                  {streak >= 4 && (
+                    <span className="text-[0.34rem] tracking-[0.1em] text-amber-400/80">🔥 {streak} WEEK STREAK</span>
+                  )}
                 </div>
               </div>
 
-              {/* Route */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-col items-center gap-1">
-                  <span className="font-display font-extrabold text-3xl tracking-[0.06em] text-white">LAX</span>
-                  <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/30">Los Angeles</span>
+              {/* ROUTE — big airport-style */}
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col">
+                  <span className="font-display font-extrabold text-4xl tracking-tight text-white leading-none">LAX</span>
+                  <span className="text-[0.36rem] tracking-[0.12em] uppercase text-white/30 mt-0.5">LOS ANGELES</span>
                 </div>
-                <div className="flex-1 flex flex-col items-center gap-1.5">
-                  <span className="text-2xl" style={{ display: 'inline-block', animation: 'float 3s ease-in-out infinite', transform: 'rotate(90deg)' }}>✈</span>
-                  <div className="w-full h-px" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 4px, transparent 4px, transparent 8px)' }} />
+
+                <div className="flex-1 flex flex-col items-center gap-1 px-2">
+                  {/* Flight path line */}
+                  <div className="w-full flex items-center gap-1">
+                    <div className="flex-1 h-px bg-white/10" />
+                    <span className="text-white/40 text-xs">✈</span>
+                    <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, ${pc.accent}40, transparent)` }} />
+                  </div>
+                  <span className="text-[0.34rem] tracking-[0.1em] uppercase text-white/20">{flightCode}</span>
                 </div>
-                <div className="flex flex-col items-center gap-1">
-                  <span className="font-display font-extrabold tracking-[0.06em]"
-                    style={{ color: pc.accent, fontSize: 'clamp(1.4rem, 7vw, 1.9rem)' }}>
-                    {(PLANET_SHORT[planet] || PLANET_NAMES[planet])}
+
+                <div className="flex flex-col items-end">
+                  <span className="font-display font-extrabold text-4xl tracking-tight leading-none"
+                    style={{ color: pc.accent, fontSize: 'clamp(1.6rem, 9vw, 2.2rem)' }}>
+                    {PLANET_SHORT[planet] || PLANET_NAMES[planet]}
                   </span>
-                  <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/30">
-                    {PLANET_PORT_CODES[planet]}
+                  <span className="text-[0.36rem] tracking-[0.12em] uppercase text-white/30 mt-0.5">
+                    {PLANET_NAMES[planet]}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* DETAILS */}
-            <div className="px-5 py-4 border-b border-white/[0.05]">
-              <div className="grid grid-cols-3 gap-3">
+            {/* PASSENGER DETAILS — grid */}
+            <div className="px-5 py-3 border-b border-white/[0.06]">
+              <div className="grid grid-cols-3 gap-x-4 gap-y-3">
                 {[
-                  { label: 'Passenger', value: pass.name.toUpperCase(), color: 'white' },
-                  { label: 'Flight',    value: flightCode,               color: 'white' },
-                  { label: 'Date',      value: passDate,                  color: 'white' },
-                  { label: 'Class',     value: levelDisplay,              color: 'white', small: true },
-                  { label: 'Next Planet', value: PLANET_NAMES[recPlanet] || '—', color: pc.accent },
-                  { label: 'Status',    value: pass.status,               color: 'rgba(80,255,128,0.8)' },
-                ].map(({ label, value, color, small }) => (
-                  <div key={label} className="flex flex-col gap-0.5">
-                    <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">{label}</span>
-                    <span className={`font-display font-bold leading-tight ${small ? 'text-[0.55rem]' : 'text-sm'} tracking-[0.04em]`}
-                      style={{ color }}>
+                  { label: 'PASSENGER', value: pass.name.toUpperCase(), span: true },
+                  { label: 'DATE', value: passDate },
+                  { label: 'CLASS', value: levelDisplay, color: pc.accent, small: true },
+                  { label: 'NEXT PLANET', value: PLANET_NAMES[recPlanet] || '—', color: pc.accent },
+                  { label: 'STATUS', value: pass.status, color: 'rgba(80,255,128,0.8)' },
+                ].map(({ label, value, color, small, span }) => (
+                  <div key={label} className={span ? 'col-span-3' : ''}>
+                    <p className="text-[0.32rem] tracking-[0.2em] uppercase text-white/22 mb-0.5">{label}</p>
+                    <p className={`font-display font-bold leading-tight ${small ? 'text-[0.52rem]' : 'text-[0.72rem]'} tracking-[0.04em]`}
+                      style={{ color: color || 'white' }}>
                       {value}
-                    </span>
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
 
+            {/* PLANET PROGRESS BAR */}
+            <div className="px-5 py-3 border-b border-white/[0.06]">
+              <p className="text-[0.32rem] tracking-[0.2em] uppercase text-white/22 mb-2">ORBIT PROGRESS</p>
+              <div className="flex gap-1.5">
+                {CORE_PLANETS.map(p => {
+                  const isVisited = visitedCore.includes(p)
+                  const isCurrent = p === planet
+                  const pColor = PLANET_COLORS[p]?.accent || '#00d4ff'
+                  return (
+                    <div key={p} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full h-1 rounded-full transition-all duration-700"
+                        style={{
+                          background: isCurrent ? pColor : isVisited ? `${pColor}50` : 'rgba(255,255,255,0.06)',
+                          boxShadow: isCurrent ? `0 0 6px ${pColor}` : 'none',
+                        }} />
+                      <span className="text-[0.28rem] tracking-[0.06em] uppercase"
+                        style={{ color: isCurrent ? pColor : isVisited ? `${pColor}70` : 'rgba(255,255,255,0.15)' }}>
+                        {PLANET_NAMES[p].slice(0,3)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* TEAR LINE */}
-            <div className="flex items-center mx-[-1px]">
-              <div className="w-3 h-3 rounded-full bg-[#060608] border border-white/10 -ml-1.5 flex-shrink-0" />
-              <div className="flex-1 border-t border-dashed border-white/[0.08]" />
-              <div className="w-3 h-3 rounded-full bg-[#060608] border border-white/10 -mr-1.5 flex-shrink-0" />
+            <div className="flex items-center mx-0">
+              <div className="w-4 h-4 rounded-full -ml-2 flex-shrink-0"
+                style={{ background: '#060608', border: '1px solid rgba(255,255,255,0.08)' }} />
+              <div className="flex-1 border-t border-dashed border-white/[0.07]" />
+              <div className="w-4 h-4 rounded-full -mr-2 flex-shrink-0"
+                style={{ background: '#060608', border: '1px solid rgba(255,255,255,0.08)' }} />
             </div>
 
             {/* STUB */}
-            <div className="px-5 py-4">
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Gate</span>
-                  <span className="font-display font-bold text-sm text-white">SS-01</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Seat</span>
-                  <span className="font-display font-bold text-sm text-white">{seatLetter}{seatNum}</span>
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22">Mission</span>
-                  <span className="font-display font-bold text-sm" style={{ color: pc.accent }}>{scanCount} of ∞</span>
-                </div>
+            <div className="px-5 py-3">
+              <div className="grid grid-cols-3 gap-4 mb-3">
+                {[
+                  { label: 'GATE', value: 'SS-01' },
+                  { label: 'SEAT', value: `${String.fromCharCode(65 + (pass.id.charCodeAt(0) % 6))}${(pass.id.charCodeAt(1) % 30) + 1}` },
+                  { label: 'MISSION', value: `${scanCount} of ∞`, color: pc.accent },
+                ].map(({ label, value, color }) => (
+                  <div key={label}>
+                    <p className="text-[0.3rem] tracking-[0.18em] uppercase text-white/22 mb-0.5">{label}</p>
+                    <p className="font-display font-bold text-sm" style={{ color: color || 'white' }}>{value}</p>
+                  </div>
+                ))}
               </div>
-              <div className="flex flex-col gap-1.5">
-                <div className="w-full h-11 rounded-sm opacity-[0.12]"
-                  style={{ background: 'repeating-linear-gradient(90deg, white 0, white 1.5px, transparent 1.5px, transparent 3px, white 3px, white 4px, transparent 4px, transparent 6px, white 6px, white 7px, transparent 7px, transparent 10px, white 10px, white 12px, transparent 12px, transparent 14px)' }} />
-                <p className="text-[0.34rem] tracking-[0.15em] uppercase text-white/18 text-center">
-                  OVERRIDE™ · MISSION BRIEFING™ · SPACESHIP STRAINS™
-                </p>
+
+              {/* QR CODE AREA — visible barcode-style */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-10 rounded opacity-[0.08]"
+                  style={{ background: 'repeating-linear-gradient(90deg,white 0,white 1.5px,transparent 1.5px,transparent 3px,white 3px,white 4px,transparent 4px,transparent 6px,white 6px,white 7px,transparent 7px,transparent 10px,white 10px,white 12px,transparent 12px,transparent 14px)' }} />
+                <div className="flex flex-col items-end">
+                  <span className="text-[0.28rem] tracking-[0.12em] uppercase text-white/15">OVERRIDE™</span>
+                  <span className="text-[0.28rem] tracking-[0.08em] text-white/10">{pass.id.slice(-8).toUpperCase()}</span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* NEXT DESTINATION */}
           {recData && (
-            <div className="w-full border border-white/[0.06] bg-white/[0.01] p-4 text-center">
-              <span className="text-[0.4rem] tracking-[0.2em] uppercase text-white/22 block mb-2">// NEXT DESTINATION UNLOCKED</span>
-              <span className="text-4xl block mb-1.5">{recData.emoji}</span>
-              <span className="font-display font-extrabold text-xl tracking-[0.12em] block mb-1.5" style={{ color: pc.accent }}>
-                {recData.name}
-              </span>
-              <span className="text-[0.55rem] text-white/40 leading-relaxed tracking-[0.03em]">{recData.desc}</span>
+            <div className="w-full rounded-xl border border-white/[0.06] bg-white/[0.01] p-4">
+              <p className="text-[0.36rem] tracking-[0.2em] uppercase text-white/22 mb-2">// NEXT DESTINATION UNLOCKED</p>
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{recData.emoji}</span>
+                <div>
+                  <p className="font-display font-extrabold text-lg tracking-[0.1em]" style={{ color: pc.accent }}>{recData.name}</p>
+                  <p className="text-[0.46rem] text-white/35 leading-relaxed mt-0.5">{recData.desc}</p>
+                </div>
+              </div>
             </div>
           )}
 
           {/* UPGRADE MESSAGE */}
-          <div className="w-full border border-amber-400/20 bg-amber-400/[0.04] px-4 py-3.5">
-            <p className="text-[0.48rem] text-amber-300/60 leading-relaxed tracking-[0.04em]">
+          <div className="w-full rounded-xl border border-amber-400/15 bg-amber-400/[0.03] px-4 py-3">
+            <p className="text-[0.46rem] text-amber-300/55 leading-relaxed tracking-[0.03em]">
               {upgradeMessages[pass.level] || upgradeMessages.NEW_RECRUIT}
             </p>
           </div>
 
           {/* STREAK + HOME PLANET */}
-          {(pass.streak_count || pass.home_planet) && (
-            <div className="w-full grid grid-cols-2 gap-3">
-              {pass.streak_count && pass.streak_count > 0 && (
-                <div className="border border-white/[0.06] bg-white/[0.01] p-3 text-center">
-                  <span className="text-[0.38rem] tracking-[0.18em] uppercase text-white/25 block mb-1">// STREAK</span>
-                  <span className="font-display font-extrabold text-2xl" style={{ color: pass.streak_count >= 4 ? '#f0b428' : pc.accent }}>
-                    {pass.streak_count >= 4 ? '🔥' : '⚡'} {pass.streak_count}
-                  </span>
-                  <span className="text-[0.38rem] tracking-[0.08em] uppercase text-white/25 block mt-0.5">
-                    {pass.streak_count >= 4 ? 'ON FIRE' : 'WEEK STREAK'}
-                  </span>
+          {(streak > 0 || pass.home_planet) && (
+            <div className="w-full grid grid-cols-2 gap-2">
+              {streak > 0 && (
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-3 text-center">
+                  <p className="text-[0.32rem] tracking-[0.18em] uppercase text-white/22 mb-1">STREAK</p>
+                  <p className="font-display font-extrabold text-xl" style={{ color: streak >= 4 ? '#f0b428' : pc.accent }}>
+                    {streak >= 4 ? '🔥' : '⚡'} {streak}
+                  </p>
+                  <p className="text-[0.32rem] uppercase text-white/20 mt-0.5">{streak >= 4 ? 'ON FIRE' : 'WEEKS'}</p>
                 </div>
               )}
               {pass.home_planet && (
-                <div className="border border-white/[0.06] bg-white/[0.01] p-3 text-center">
-                  <span className="text-[0.38rem] tracking-[0.18em] uppercase text-white/25 block mb-1">// HOME PLANET</span>
-                  <span className="text-2xl block">{PLANET_EMOJIS[pass.home_planet] || '🔴'}</span>
-                  <span className="text-[0.42rem] tracking-[0.08em] uppercase font-bold block mt-0.5" style={{ color: pc.accent }}>
-                    {PLANET_NAMES[pass.home_planet] || 'MARS'}
-                  </span>
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.01] p-3 text-center">
+                  <p className="text-[0.32rem] tracking-[0.18em] uppercase text-white/22 mb-1">HOME PLANET</p>
+                  <p className="text-2xl">{PLANET_EMOJIS[pass.home_planet]}</p>
+                  <p className="text-[0.38rem] tracking-[0.06em] uppercase font-bold mt-0.5" style={{ color: PLANET_COLORS[pass.home_planet]?.accent || pc.accent }}>
+                    {PLANET_NAMES[pass.home_planet]}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FLIGHT HISTORY */}
+          {flightHistory.length > 0 && (
+            <div className="w-full rounded-xl border border-white/[0.06] bg-white/[0.01] overflow-hidden">
+              <button onClick={() => setShowHistory(!showHistory)}
+                className="w-full flex items-center justify-between px-4 py-3 active:opacity-70">
+                <span className="text-[0.38rem] tracking-[0.18em] uppercase text-white/40">// FLIGHT HISTORY</span>
+                <span className="text-[0.38rem] tracking-[0.15em] uppercase text-white/25">{showHistory ? '▲ HIDE' : '▼ SHOW'}</span>
+              </button>
+              {showHistory && (
+                <div className="px-4 pb-3 flex flex-col gap-2">
+                  {flightHistory.slice().reverse().slice(0, 8).map((f, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-t border-white/[0.04]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{PLANET_EMOJIS[f.planet] || '🔴'}</span>
+                        <div>
+                          <p className="text-[0.48rem] font-bold tracking-[0.06em]"
+                            style={{ color: PLANET_COLORS[f.planet]?.accent || 'white' }}>
+                            {PLANET_NAMES[f.planet] || f.planet.toUpperCase()}
+                          </p>
+                          <p className="text-[0.36rem] uppercase text-white/25 tracking-[0.06em]">{f.intensity || 'PERFECT'}</p>
+                        </div>
+                      </div>
+                      <span className="text-[0.38rem] tracking-[0.08em] uppercase text-white/30">{f.date}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -454,29 +485,33 @@ export default function BoardingPassClient({
 
           {/* REFERRAL */}
           {pass.referral_code && (
-            <div className="w-full border border-white/[0.06] bg-white/[0.01] p-4">
-              <span className="text-[0.4rem] tracking-[0.2em] uppercase text-white/22 block mb-2">// REFER A CREW MEMBER</span>
-              <p className="text-[0.52rem] text-white/40 leading-relaxed mb-3">
-                Share your code. When a friend completes their first Mission Briefing — you both get Paradise early access.
+            <div className="w-full rounded-xl border border-white/[0.06] bg-white/[0.01] p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[0.36rem] tracking-[0.18em] uppercase text-white/30">// REFER CREW</span>
+                {pass.referral_count ? (
+                  <span className="text-[0.38rem] tracking-[0.1em] uppercase px-2 py-0.5 rounded-sm"
+                    style={{ background: `${pc.accent}15`, color: pc.accent }}>
+                    {pass.referral_count} REFERRED
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[0.46rem] text-white/35 leading-relaxed mb-3">
+                Share your code. Friend completes Mission Briefing = you both unlock Paradise early access.
               </p>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-center">
+                <div className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-center rounded-lg">
                   <span className="font-mono text-sm font-bold tracking-[0.15em]" style={{ color: pc.accent }}>
                     {pass.referral_code}
                   </span>
                 </div>
-                <button
-                  onClick={() => {
-                    const url = `https://www.overridecannabis.com/mission?ref=${pass.referral_code}`
-                    if (navigator.share) {
-                      navigator.share({ title: 'OVERRIDE™', text: 'Join me on OVERRIDE Mission Briefing 🚀', url })
-                    } else {
-                      navigator.clipboard.writeText(url)
-                    }
-                  }}
-                  className="px-4 py-2 text-[0.5rem] tracking-[0.12em] uppercase font-mono text-white active:opacity-70"
+                <button onClick={() => {
+                  const url = `https://www.overridecannabis.com/mission?ref=${pass.referral_code}`
+                  if (navigator.share) navigator.share({ title: 'OVERRIDE™', text: 'Join me on OVERRIDE 🚀', url })
+                  else { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }
+                }}
+                  className="px-4 py-2 rounded-lg text-[0.5rem] tracking-[0.12em] uppercase font-mono text-white active:opacity-70"
                   style={{ background: `${pc.accent}20`, border: `1px solid ${pc.accent}40` }}>
-                  SHARE
+                  {copied ? '✓' : 'SHARE'}
                 </button>
               </div>
             </div>
@@ -484,33 +519,33 @@ export default function BoardingPassClient({
 
           {/* SHARE */}
           <button onClick={handleShare}
-            className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70 flex items-center justify-center gap-2"
-            style={{ background: `linear-gradient(135deg, ${pc.accent}30, ${pc.accent}15)`, border: `1px solid ${pc.accent}50` }}>
-            {copied ? '✓ COPIED TO CLIPBOARD' : shareSupported ? '↑ SHARE YOUR BOARDING PASS' : '↑ COPY BOARDING PASS LINK'}
+            className="w-full py-4 rounded-xl text-[0.6rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70 flex items-center justify-center gap-2"
+            style={{ background: `linear-gradient(135deg, ${pc.accent}25, ${pc.accent}10)`, border: `1px solid ${pc.accent}40` }}>
+            ↑ SHARE YOUR BOARDING PASS
           </button>
 
           <a href="https://spaceshipstrains.com" className="w-full">
-            <button className="w-full py-4 text-[0.6rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
-              style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${pc.accent}40` }}>
+            <button className="w-full py-3.5 rounded-xl text-[0.58rem] tracking-[0.15em] uppercase font-mono text-white active:opacity-70"
+              style={{ background: 'linear-gradient(135deg,rgba(0,40,120,0.9),rgba(50,0,100,0.9))', border: `1px solid ${pc.accent}30` }}>
               EXPLORE ALL PLANETS →
             </button>
           </a>
 
-          <a href="https://instagram.com/spaceshipstrains" target="_blank" rel="noopener" className="w-full">
-            <button className="w-full py-3.5 text-[0.58rem] tracking-[0.15em] uppercase font-mono active:opacity-70"
-              style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' }}>
-              FOLLOW @SPACESHIPSTRAINS
+          <div className="w-full grid grid-cols-2 gap-2">
+            <a href="https://instagram.com/spaceshipstrains" target="_blank" rel="noopener">
+              <button className="w-full py-3 rounded-xl text-[0.48rem] tracking-[0.1em] uppercase font-mono active:opacity-70"
+                style={{ border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.35)' }}>
+                @SPACESHIPSTRAINS
+              </button>
+            </a>
+            <button onClick={handleScanNew}
+              className="w-full py-3 rounded-xl text-[0.48rem] tracking-[0.1em] uppercase font-mono active:opacity-70"
+              style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)' }}>
+              SCAN NEW PLANET →
             </button>
-          </a>
+          </div>
 
-          {/* #8 SCAN NEW PLANET clears stale state */}
-          <button onClick={handleScanNew}
-            className="w-full py-3.5 text-[0.58rem] tracking-[0.15em] uppercase font-mono active:opacity-70"
-            style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.25)' }}>
-            SCAN NEW PLANET →
-          </button>
-
-          <p className="text-[0.36rem] tracking-[0.18em] uppercase text-white/[0.08] text-center pb-2">
+          <p className="text-[0.32rem] tracking-[0.15em] uppercase text-white/[0.07] text-center pb-2">
             OVERRIDE™ · SPACESHIP STRAINS™ · MISSION BRIEFING™ · LOS ANGELES · 2026
           </p>
         </div>
