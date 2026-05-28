@@ -1,10 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase, PLANET_NAMES, PLANET_COLORS, LEVEL_DISPLAY } from '@/lib/supabase'
-
-const ADMIN_PASSWORD = 'OVERRIDE2026'
+import { supabase, PLANET_NAMES, PLANET_COLORS } from '@/lib/supabase'
 
 const PLANET_EMOJIS: Record<string, string> = {
   mars: '🔴', jupiter: '🟡', saturn: '🪐',
@@ -41,9 +38,6 @@ interface Stats {
 }
 
 export default function AdminPage() {
-  const [authed, setAuthed] = useState(false)
-  const [pwd, setPwd] = useState('')
-  const [pwdError, setPwdError] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(false)
@@ -55,23 +49,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'blast'>('overview')
   const [searchQuery, setSearchQuery] = useState('')
 
-  const checkAuth = () => {
-    if (pwd === ADMIN_PASSWORD) {
-      setAuthed(true)
-      localStorage.setItem('override_admin_auth', '1')
-    } else {
-      setPwdError(true)
-      setTimeout(() => setPwdError(false), 2000)
-    }
-  }
-
-  useEffect(() => {
-    if (localStorage.getItem('override_admin_auth') === '1') setAuthed(true)
-  }, [])
-
-  useEffect(() => {
-    if (authed) { loadStats(); loadUsers() }
-  }, [authed])
+  useEffect(() => { loadStats(); loadUsers() }, [])
 
   const loadStats = async () => {
     const { data } = await supabase.from('users').select('planet, level, created_at')
@@ -157,38 +135,6 @@ export default function AdminPage() {
   )
 
   const ac = 'rgba(0,212,255,0.8)'
-
-  if (!authed) {
-    return (
-      <div className="min-h-screen bg-[#060608] flex items-center justify-center px-6">
-        <div className="w-full max-w-[360px] flex flex-col gap-5">
-          <div className="text-center">
-            <h1 className="font-display font-extrabold text-3xl tracking-[0.1em] text-white">OVERRIDE OS™</h1>
-            <p className="text-[0.48rem] tracking-[0.2em] uppercase text-white/30 mt-2">// Admin Access Required</p>
-          </div>
-          <div>
-            <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/25 mb-1.5 block">// Access Code</span>
-            <input
-              type="password"
-              value={pwd}
-              onChange={e => setPwd(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && checkAuth()}
-              placeholder="ENTER CODE"
-              className="w-full bg-black/40 text-white font-mono text-sm py-4 px-4 outline-none placeholder:text-white/20 border border-white/10"
-              style={{ borderBottom: `2px solid ${pwdError ? 'rgba(255,80,80,0.7)' : ac}` }}
-              autoFocus
-            />
-          </div>
-          <button onClick={checkAuth}
-            className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white"
-            style={{ background: 'linear-gradient(135deg,rgba(0,40,120,0.9),rgba(50,0,100,0.9))', border: `1px solid ${ac}40` }}>
-            AUTHENTICATE →
-          </button>
-          {pwdError && <p className="text-[0.48rem] tracking-[0.15em] uppercase text-red-400/70 text-center">ACCESS DENIED</p>}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-[#060608] text-white font-mono">
