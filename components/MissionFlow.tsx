@@ -1,251 +1,433 @@
-import { createClient } from '@supabase/supabase-js'
+'use client'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  upsertUser,
+  incrementScanCount,
+  logEvent,
+  PLANET_COLORS,
+  PLANET_NAMES,
+  PLANET_SUBTITLES,
+  ROUTING,
+} from '@/lib/supabase'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+type Screen = 'entry' | 'name' | 'planet' | 'intensity' | 'contact' | 'launching'
 
-// Planet flight codes
-export const PLANET_CODES: Record<string, string> = {
-  mars:     'SS-MAR',
-  jupiter:  'SS-JUP',
-  saturn:   'SS-SAT',
-  venus:    'SS-VEN',
-  neptune:  'SS-NEP',
-  moonrock: 'SS-MR',
+const PLANETS = ['mars', 'jupiter', 'saturn', 'venus', 'neptune', 'moonrock'] as const
+type Planet = typeof PLANETS[number]
+
+const PLANET_INFO = {
+  mars:     { emoji: '🔴', desc: 'Heavy · Intense · High THC' },
+  jupiter:  { emoji: '🟡', desc: 'Balanced · Social · Creative' },
+  saturn:   { emoji: '🪐', desc: 'Smooth · Mellow · Terpene-Rich' },
+  venus:    { emoji: '✨', desc: 'Uplift · Creative · Warm' },
+  neptune:  { emoji: '🌊', desc: 'Deep Calm · Nighttime' },
+  moonrock: { emoji: '🌙', desc: 'Maximum Intensity' },
 }
 
-// Planet display names
-export const PLANET_NAMES: Record<string, string> = {
-  mars:     'MARS',
-  jupiter:  'JUPITER',
-  saturn:   'SATURN',
-  venus:    'VENUS',
-  neptune:  'NEPTUNE',
-  moonrock: 'REST STATION',
+const INTENSITY_OPTIONS = [
+  { key: 'less',    emoji: '🌤', label: 'TOO STRONG',  sub: 'Route me somewhere smoother' },
+  { key: 'perfect', emoji: '🎯', label: 'PERFECT',     sub: 'Exactly what I wanted' },
+  { key: 'more',    emoji: '🚀', label: 'WANT MORE',   sub: 'Push the orbit further' },
+]
+
+const CORE_PLANETS = ['mars', 'jupiter', 'saturn', 'venus', 'neptune']
+
+function useTypewriter(text: string, speed = 40, start = false) {
+  const [displayed, setDisplayed] = useState('')
+  const [done, setDone] = useState(false)
+  useEffect(() => {
+    if (!start || !text) return
+    setDisplayed('')
+    setDone(false)
+    let i = 0
+    const timer = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) { clearInterval(timer); setDone(true) }
+    }, speed)
+    return () => clearInterval(timer)
+  }, [text, speed, start])
+  return { displayed, done }
 }
 
-// Short codes for boarding pass route display (max 6 chars)
-export const PLANET_SHORT: Record<string, string> = {
-  mars:     'MARS',
-  jupiter:  'JUP',
-  saturn:   'SAT',
-  venus:    'VENUS',
-  neptune:  'NEP',
-  moonrock: 'REST',
-}
+export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
+  const router = useRouter()
+  const [screen, setScreen] = useState<Screen>('entry')
+  const [name, setName] = useState('')
+  const [planet, setPlanet] = useState<Planet | ''>(scanPlanet as Planet || '')
+  const [intensity, setIntensity] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [accentColor, setAccentColor] = useState('rgba(0,212,255,0.8)')
+  const [glowColor, setGlowColor] = useState('rgba(0,80,200,0.15)')
+  const [nameError, setNameError] = useState(false)
+  const [emailError, setEmailError] = useState(false)
+  const [stars, setStars] = useState<Array<{ x: number; y: number; r: number; o: number }>>([])
+  const [typewriterStarted, setTypewriterStarted] = useState(false)
+  const [isReturningUser, setIsReturningUser] = useState(false)
 
-// Planet accent colors
-export const PLANET_COLORS: Record<string, { accent: string; glow: string; text: string }> = {
-  mars:     { accent: '#ff4820', glow: 'rgba(255,72,32,0.2)',   text: 'text-mars' },
-  jupiter:  { accent: '#f0b428', glow: 'rgba(240,180,40,0.15)', text: 'text-jupiter' },
-  saturn:   { accent: '#c4a84a', glow: 'rgba(196,168,74,0.15)', text: 'text-saturn' },
-  venus:    { accent: '#ff64b4', glow: 'rgba(255,100,180,0.15)',text: 'text-venus' },
-  neptune:  { accent: '#4060ff', glow: 'rgba(64,96,255,0.2)',   text: 'text-neptune' },
-  moonrock: { accent: '#b464ff', glow: 'rgba(180,100,255,0.2)', text: 'text-moonrock' },
-}
+  const activePlanet = planet || scanPlanet || ''
+  const destText = activePlanet
+    ? `DESTINATION: ${PLANET_NAMES[activePlanet]}`
+    : 'AWAITING PLANET DATA...'
+  const { displayed: typedDest, done: typeDone } = useTypewriter(destText, 45, typewriterStarted)
 
-// Planet destination subtitles
-export const PLANET_SUBTITLES: Record<string, string> = {
-  mars:     'RED ZONE ACTIVE',
-  jupiter:  'STORM ROUTE SELECTED',
-  saturn:   'RING SECTOR CLEARANCE',
-  venus:    'ATMOSPHERIC PROTOCOL',
-  neptune:  'DEEP SPACE MODE',
-  moonrock: 'REST STATION — DOCKING PROTOCOL',
-}
+  useEffect(() => {
+    const s = Array.from({ length: 150 }, () => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      r: Math.random() * 1.2 + 0.3,
+      o: Math.random() * 0.5 + 0.1,
+    }))
+    setStars(s)
+    setTimeout(() => setTypewriterStarted(true), 600)
+  }, [])
 
-// 18-combination routing table
-export const ROUTING: Record<string, Record<string, { emoji: string; name: string; key: string; desc: string }>> = {
-  mars: {
-    less:    { emoji: '🪐', name: 'SATURN',    key: 'saturn',   desc: 'Smoother atmosphere. Linalool-dominant, terpene-forward. The connoisseur orbit after a heavy Mars experience.' },
-    perfect: { emoji: '🟡', name: 'JUPITER',   key: 'jupiter',  desc: 'Mars was perfect. Jupiter is your next — balanced hybrid, uplifting, social. The flagship planet.' },
-    more:    { emoji: '🌙', name: 'MOON ROCK', key: 'moonrock', desc: 'You want more than Mars. Moon Rock — flower + live resin + kief. 40-60%+ THC. Maximum orbit.' },
-  },
-  jupiter: {
-    less:    { emoji: '✨', name: 'VENUS',     key: 'venus',    desc: 'Lighter energy. Venus is pinene-dominant, warm, euphoric, creative. Keeps your head clear.' },
-    perfect: { emoji: '🔴', name: 'MARS',      key: 'mars',     desc: 'Jupiter was perfect. Mars is your next orbit — heavy, intense, myrcene-dominant. Maximum power.' },
-    more:    { emoji: '🌙', name: 'MOON ROCK', key: 'moonrock', desc: 'More than Jupiter. Moon Rock — flower + live resin + kief. The top of the lineup.' },
-  },
-  saturn: {
-    less:    { emoji: '🌊', name: 'NEPTUNE',   key: 'neptune',  desc: 'Deeper calm. Neptune — myrcene and linalool dominant. Premium nighttime descent.' },
-    perfect: { emoji: '🌊', name: 'NEPTUNE',   key: 'neptune',  desc: 'Saturn was perfect. Neptune takes you deeper — full nighttime descent, introspective.' },
-    more:    { emoji: '🟡', name: 'JUPITER',   key: 'jupiter',  desc: 'More energy. Jupiter — balanced hybrid, uplifting and social. A different kind of elevated.' },
-  },
-  venus: {
-    less:    { emoji: '🟡', name: 'JUPITER',   key: 'jupiter',  desc: 'Balance the energy. Jupiter — uplifting, social, best entry point. The natural next step.' },
-    perfect: { emoji: '🔴', name: 'MARS',      key: 'mars',     desc: 'Venus was perfect. Mars is next — heavy, intense, high THC. Take the creative energy further.' },
-    more:    { emoji: '🌙', name: 'MOON ROCK', key: 'moonrock', desc: 'More than Venus. Moon Rock — flower + live resin + kief. Maximum intensity.' },
-  },
-  neptune: {
-    less:    { emoji: '🪐', name: 'SATURN',    key: 'saturn',   desc: 'Lighter but smooth. Saturn — terpene-forward, relaxing. Relaxation without full depth.' },
-    perfect: { emoji: '🪐', name: 'SATURN',    key: 'saturn',   desc: 'Neptune was perfect. Saturn — same calm energy, full terpene profile. Daytime version.' },
-    more:    { emoji: '✨', name: 'VENUS',     key: 'venus',    desc: 'More than Neptune. Venus — warm, euphoric, creative. A different kind of elevated experience.' },
-  },
-  moonrock: {
-    less:    { emoji: '🔴', name: 'MARS',      key: 'mars',     desc: 'Moon Rock was intense. Mars — 32% THC without the concentrate layer. Still heavy, still OVERRIDE.' },
-    perfect: { emoji: '🔴', name: 'MARS',      key: 'mars',     desc: 'Moon Rock was perfect. Mars is closest — high THC, heavy, myrcene-dominant.' },
-    more:    { emoji: '🌙', name: 'MOON ROCK', key: 'moonrock', desc: 'You are at the top of the orbit. Stay on Moon Rock and explore a new planet next time.' },
-  },
-}
+  useEffect(() => {
+    if (scanPlanet && PLANET_COLORS[scanPlanet]) {
+      setAccentColor(PLANET_COLORS[scanPlanet].accent)
+      setGlowColor(PLANET_COLORS[scanPlanet].glow)
+    }
+  }, [scanPlanet])
 
-// Level progression
-export const LEVELS = ['NEW_RECRUIT', 'CREW_MEMBER', 'INNER_CIRCLE', 'FIRST_CONTACT']
-export const LEVEL_DISPLAY: Record<string, string> = {
-  NEW_RECRUIT:   'NEW RECRUIT — ECONOMY',
-  CREW_MEMBER:   'CREW MEMBER — BUSINESS',
-  INNER_CIRCLE:  'INNER CIRCLE — FIRST CLASS',
-  FIRST_CONTACT: 'FIRST CONTACT — PRIVATE CHARTER',
-}
+  useEffect(() => {
+    const existingId = localStorage.getItem('override_user_id')
+    const savedName = localStorage.getItem('override_name')
+    if (existingId) {
+      setIsReturningUser(true)
+      if (savedName) setName(savedName)
+    }
+    // #8 Clear stale planet/intensity state on fresh entry
+    localStorage.removeItem('override_last_intensity')
+    localStorage.removeItem('override_last_rec')
+  }, [])
 
-// DB helpers
-export async function createUser(data: {
-  name: string
-  planet: string
-  intensity?: string
-  recommendation?: string
-  email?: string
-  phone?: string
-}) {
-  const { data: user, error } = await supabase
-    .from('users')
-    .insert({
-      name: data.name,
-      planet: data.planet,
-      intensity: data.intensity || null,
-      recommendation: data.recommendation || null,
-      email: data.email || null,
-      phone: data.phone || null,
-      level: 'NEW_RECRUIT',
-      status: 'LAUNCHED',
-      scan_count: 1,
-    })
-    .select()
-    .single()
+  const setAccent = useCallback((p: string) => {
+    if (PLANET_COLORS[p]) {
+      setAccentColor(PLANET_COLORS[p].accent)
+      setGlowColor(PLANET_COLORS[p].glow)
+    }
+  }, [])
 
-  if (error) throw error
-  return user
-}
+  const goTo = (s: Screen) => {
+    setScreen(s)
+    window.scrollTo(0, 0)
+  }
 
-export async function getUserById(id: string) {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return data
-}
+  const submitName = () => {
+    if (!name.trim()) { setNameError(true); return }
+    setNameError(false)
+    localStorage.setItem('override_name', name.trim())
+    if (scanPlanet && PLANETS.includes(scanPlanet as Planet)) {
+      setPlanet(scanPlanet as Planet)
+      goTo('intensity')
+    } else {
+      goTo('planet')
+    }
+  }
 
-export async function logEvent(userId: string, eventType: string, metadata: Record<string, unknown> = {}) {
-  const { error } = await supabase
-    .from('events')
-    .insert({ user_id: userId, event_type: eventType, metadata })
-  if (error) console.error('Event log error:', error)
-}
+  const selectPlanet = (p: Planet) => {
+    setPlanet(p)
+    setAccent(p)
+    setTimeout(() => goTo('intensity'), 300)
+  }
 
-export async function updateUserLevel(userId: string, level: string) {
-  const { error } = await supabase
-    .from('users')
-    .update({ level })
-    .eq('id', userId)
-  if (error) throw error
-}
+  // #7 Pass intensity directly — never rely on state
+  const selectIntensity = (i: string) => {
+    setIntensity(i)
+    const existingId = localStorage.getItem('override_user_id')
+    const finalPlanet = (scanPlanet && PLANETS.includes(scanPlanet as Planet)
+      ? scanPlanet
+      : planet) || 'jupiter'
 
-export async function incrementScanCount(userId: string) {
-  const { data: user } = await supabase
-    .from('users')
-    .select('scan_count, updated_at')
-    .eq('id', userId)
-    .single()
+    if (existingId) {
+      setTimeout(() => goTo('launching'), 300)
+      setTimeout(async () => {
+        const rec = ROUTING[finalPlanet]?.[i]
+        try {
+          const result = await incrementScanCount(existingId)
+          await logEvent(existingId, 'mission_completed', {
+            planet: finalPlanet, intensity: i, recommendation: rec?.key, returning: true,
+          })
+          localStorage.setItem('override_planet', finalPlanet)
+          if (result) localStorage.setItem('override_level', result.level)
+        } catch {}
+        // #1 #5 Pass current intensity+planet through URL so boarding pass shows correct recommendation
+        router.push(`/boarding-pass?id=${existingId}&cp=${finalPlanet}&ci=${i}`)
+      }, 500)
+    } else {
+      setTimeout(() => goTo('contact'), 300)
+    }
+  }
 
-  if (user) {
-    // ANTI-EXPLOIT: Only allow one increment per 24 hours
-    const lastUpdate = new Date(user.updated_at || 0)
-    const hoursSinceLastScan = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60)
-    if (hoursSinceLastScan < 24) {
-      // Too soon — return current level without incrementing
-      const currentCount = user.scan_count || 1
-      let currentLevel = 'NEW_RECRUIT'
-      if (currentCount >= 4) currentLevel = 'FIRST_CONTACT'
-      else if (currentCount >= 3) currentLevel = 'INNER_CIRCLE'
-      else if (currentCount >= 2) currentLevel = 'CREW_MEMBER'
-      return { scan_count: currentCount, level: currentLevel, incremented: false }
+  const finalize = async () => {
+    const existingId = localStorage.getItem('override_user_id')
+    const finalPlanet = (scanPlanet && PLANETS.includes(scanPlanet as Planet)
+      ? scanPlanet
+      : planet) || 'jupiter'
+    const finalIntensity = intensity || 'perfect'
+
+    if (existingId) {
+      goTo('launching')
+      try {
+        const rec = ROUTING[finalPlanet]?.[finalIntensity]
+        const result = await incrementScanCount(existingId)
+        await logEvent(existingId, 'mission_completed', {
+          planet: finalPlanet, intensity: finalIntensity, recommendation: rec?.key, returning: true,
+        })
+        localStorage.setItem('override_planet', finalPlanet)
+        if (result) localStorage.setItem('override_level', result.level)
+      } catch {}
+      router.push(`/boarding-pass?id=${existingId}&cp=${finalPlanet}&ci=${finalIntensity}`)
+      return
     }
 
-    const newCount = (user.scan_count || 1) + 1
-    let newLevel = 'NEW_RECRUIT'
-    if (newCount >= 4) newLevel = 'FIRST_CONTACT'
-    else if (newCount >= 3) newLevel = 'INNER_CIRCLE'
-    else if (newCount >= 2) newLevel = 'CREW_MEMBER'
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      setEmailError(true); return
+    }
+    setEmailError(false)
+    goTo('launching')
 
-    await supabase
-      .from('users')
-      .update({ scan_count: newCount, level: newLevel })
-      .eq('id', userId)
-
-    return { scan_count: newCount, level: newLevel, incremented: true }
-  }
-  return null
-}
-
-// Find existing user by email and increment — or create new
-export async function upsertUser(data: {
-  name: string
-  planet: string
-  intensity?: string
-  recommendation?: string
-  email: string
-  phone?: string
-}) {
-  // Check if email already exists
-  const { data: existing } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', data.email)
-    .single()
-
-  if (existing) {
-    // Returning user — increment scan count and update planet
-    const newCount = (existing.scan_count || 1) + 1
-    let newLevel = 'NEW_RECRUIT'
-    if (newCount >= 4) newLevel = 'FIRST_CONTACT'
-    else if (newCount >= 3) newLevel = 'INNER_CIRCLE'
-    else if (newCount >= 2) newLevel = 'CREW_MEMBER'
-
-    const { data: updated } = await supabase
-      .from('users')
-      .update({
-        planet: data.planet,
-        intensity: data.intensity || null,
-        recommendation: data.recommendation || null,
-        scan_count: newCount,
-        level: newLevel,
+    try {
+      const rec = ROUTING[finalPlanet]?.[finalIntensity]
+      const { user } = await upsertUser({
+        name: name.trim(),
+        planet: finalPlanet,
+        intensity: finalIntensity,
+        recommendation: rec?.key || '',
+        email,
+        phone: phone || undefined,
       })
-      .eq('id', existing.id)
-      .select()
-      .single()
-
-    return { user: updated || existing, isReturning: true }
+      await logEvent(user.id, 'mission_completed', {
+        planet: finalPlanet, intensity: finalIntensity, recommendation: rec?.key,
+      })
+      localStorage.setItem('override_user_id', user.id)
+      localStorage.setItem('override_planet', finalPlanet)
+      localStorage.setItem('override_level', user.level)
+      localStorage.setItem('override_name', name.trim())
+      localStorage.setItem('override_scan_ts', new Date().toISOString())
+      // #1 #5 Pass current session planet+intensity through URL
+      router.push(`/boarding-pass?id=${user.id}&cp=${finalPlanet}&ci=${finalIntensity}`)
+    } catch (err) {
+      console.error('Mission finalize error:', err)
+      router.push(`/boarding-pass?planet=${finalPlanet}&name=${encodeURIComponent(name)}&intensity=${finalIntensity}&offline=true`)
+    }
   }
 
-  // New user — create record
-  const { data: newUser, error } = await supabase
-    .from('users')
-    .insert({
-      name: data.name,
-      planet: data.planet,
-      intensity: data.intensity || null,
-      recommendation: data.recommendation || null,
-      email: data.email,
-      phone: data.phone || null,
-      level: 'NEW_RECRUIT',
-      status: 'LAUNCHED',
-      scan_count: 1,
-    })
-    .select()
-    .single()
+  const pc = activePlanet ? PLANET_COLORS[activePlanet] : null
 
-  if (error) throw error
-  return { user: newUser, isReturning: false }
+  return (
+    <div className="relative min-h-screen bg-[#060608] overflow-hidden">
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        {stars.map((s, i) => (
+          <div key={i} className="absolute rounded-full bg-white"
+            style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.r, height: s.r, opacity: s.o }} />
+        ))}
+      </div>
+      <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000"
+        style={{ background: `radial-gradient(ellipse 80% 60% at 50% 30%, ${glowColor} 0%, transparent 70%)` }} />
+
+      <div className="relative z-10 min-h-screen flex flex-col items-center px-6 py-8 safe-top safe-bottom">
+        <div className="w-full max-w-[440px] flex flex-col items-center gap-5 flex-1 justify-center">
+
+          {/* ENTRY */}
+          {screen === 'entry' && (
+            <div className="w-full flex flex-col items-center gap-5 screen-enter">
+              <div className="w-full flex items-center justify-between pb-4 border-b border-white/[0.07]">
+                <span className="font-display font-extrabold text-lg tracking-[0.2em]">
+                  OVERRIDE<sup className="text-[0.4em] opacity-40">™</sup>
+                </span>
+                <span className="text-[0.42rem] tracking-[0.2em] uppercase flex items-center gap-1.5" style={{ color: accentColor }}>
+                  <span className="w-1.5 h-1.5 rounded-full blink" style={{ background: accentColor, boxShadow: `0 0 6px ${accentColor}` }} />
+                  SYSTEM ONLINE
+                </span>
+              </div>
+              {isReturningUser && (
+                <div className="w-full px-3 py-2 border text-center"
+                  style={{ borderColor: `${accentColor}30`, background: `${accentColor}08` }}>
+                  <span className="text-[0.44rem] tracking-[0.15em] uppercase" style={{ color: accentColor }}>
+                    ↩ RETURNING CREW DETECTED
+                  </span>
+                </div>
+              )}
+              <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20 text-center">OVERRIDE™ SYSTEM ACCESS PORTAL</p>
+              <h1 className="font-display font-extrabold text-center text-white leading-none w-full"
+                style={{ fontSize: 'clamp(1.8rem, 10vw, 3rem)', letterSpacing: '0.06em' }}>
+                MISSION<br />BRIEFING<sup style={{ fontSize: '0.35em', opacity: 0.35 }}>™</sup>
+              </h1>
+              <div className="w-full border relative overflow-hidden px-5 py-4 text-center sweep"
+                style={{ borderColor: `${accentColor}40`, background: 'rgba(0,0,0,0.35)' }}>
+                <span className="font-display font-extrabold text-lg tracking-[0.15em] block" style={{ color: accentColor }}>
+                  {typedDest}{!typeDone && <span className="animate-pulse">_</span>}
+                </span>
+                <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/25 mt-1 block">
+                  {typeDone && activePlanet ? PLANET_SUBTITLES[activePlanet] : 'INITIALIZING PLANET PROTOCOL'}
+                </span>
+              </div>
+              <p className="text-[0.46rem] tracking-[0.18em] uppercase text-white/25 text-center">
+                SYSTEM STATUS: <span className="text-green-400/80">AWAITING CONFIRMATION</span>
+              </p>
+              <button onClick={() => goTo('name')}
+                className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
+                style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
+                ▶ BEGIN BRIEFING
+              </button>
+              <p className="text-[0.4rem] tracking-[0.15em] uppercase text-white/15 text-center">SPACESHIP STRAINS™ · EST. LOS ANGELES 2026</p>
+            </div>
+          )}
+
+          {/* NAME */}
+          {screen === 'name' && (
+            <div className="w-full flex flex-col items-center gap-5 screen-enter">
+              <div className="w-full flex gap-1">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="flex-1 h-0.5 transition-all duration-300"
+                    style={{ background: i === 0 ? accentColor : 'rgba(255,255,255,0.07)' }} />
+                ))}
+              </div>
+              <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 01 · IDENTITY VERIFICATION</p>
+              <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
+                {isReturningUser ? 'Welcome back.' : 'What should we call you?'}
+              </h2>
+              <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">
+                {isReturningUser ? 'Confirm your designation to continue' : 'Crew designation required for clearance'}
+              </p>
+              <div className="w-full">
+                <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-2 block">// DESIGNATION</span>
+                <input type="text" value={name}
+                  onChange={e => { setName(e.target.value); setNameError(false) }}
+                  onKeyDown={e => e.key === 'Enter' && submitName()}
+                  placeholder="ENTER YOUR NAME" autoComplete="given-name" autoCorrect="off" spellCheck={false}
+                  className="w-full bg-black/40 text-white font-mono text-sm py-4 px-4 outline-none placeholder:text-white/20 placeholder:text-xs border border-white/10"
+                  style={{ borderBottom: `2px solid ${nameError ? 'rgba(255,80,80,0.7)' : accentColor}` }}
+                  autoFocus />
+              </div>
+              <button onClick={submitName}
+                className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
+                style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
+                CONFIRM →
+              </button>
+            </div>
+          )}
+
+          {/* PLANET */}
+          {screen === 'planet' && (
+            <div className="w-full flex flex-col items-center gap-4 screen-enter">
+              <div className="w-full flex gap-1">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="flex-1 h-0.5 transition-all duration-300"
+                    style={{ background: i <= 1 ? accentColor : 'rgba(255,255,255,0.07)' }} />
+                ))}
+              </div>
+              <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 02 · DESTINATION SELECTION</p>
+              <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
+                Which planet did you<br />just experience?
+              </h2>
+              <div className="w-full flex flex-col gap-2.5">
+                {PLANETS.map(p => (
+                  <button key={p} onClick={() => selectPlanet(p)}
+                    className="w-full flex items-center gap-3 py-4 px-4 text-left transition-all active:opacity-70 border border-white/[0.07] bg-white/[0.02]"
+                    style={planet === p ? { borderColor: `${PLANET_COLORS[p].accent}60`, background: 'rgba(0,0,0,0.3)', color: 'white' } : { color: 'rgba(255,255,255,0.55)' }}>
+                    <span className="text-xl flex-shrink-0">{PLANET_INFO[p].emoji}</span>
+                    <div className="flex flex-col">
+                      <span className="text-[0.6rem] tracking-[0.1em] uppercase font-mono font-bold">{PLANET_NAMES[p]}</span>
+                      <span className="text-[0.45rem] tracking-[0.06em] uppercase text-white/30">{PLANET_INFO[p].desc}</span>
+                    </div>
+                    {planet === p && <span className="ml-auto text-xs" style={{ color: accentColor }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* INTENSITY */}
+          {screen === 'intensity' && (
+            <div className="w-full flex flex-col items-center gap-5 screen-enter">
+              <div className="w-full flex gap-1">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="flex-1 h-0.5 transition-all duration-300"
+                    style={{ background: i <= 2 ? accentColor : 'rgba(255,255,255,0.07)' }} />
+                ))}
+              </div>
+              <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 03 · ACCESS CLASSIFICATION</p>
+              <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">
+                How was the<br />intensity?
+              </h2>
+              <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">This routes your next destination</p>
+              <div className="w-full flex flex-col gap-2.5">
+                {INTENSITY_OPTIONS.map(opt => (
+                  <button key={opt.key} onClick={() => selectIntensity(opt.key)}
+                    className="w-full flex items-center gap-3 py-4 px-4 text-left transition-all active:opacity-70 border border-white/[0.07] bg-white/[0.02]"
+                    style={intensity === opt.key ? { borderColor: `${accentColor}60`, background: 'rgba(0,0,0,0.3)' } : {}}>
+                    <span className="text-xl flex-shrink-0">{opt.emoji}</span>
+                    <div>
+                      <span className="text-[0.62rem] tracking-[0.1em] uppercase font-mono block text-white">{opt.label}</span>
+                      <span className="text-[0.45rem] tracking-[0.06em] uppercase text-white/30">{opt.sub}</span>
+                    </div>
+                    {intensity === opt.key && <span className="ml-auto text-xs" style={{ color: accentColor }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CONTACT */}
+          {screen === 'contact' && (
+            <div className="w-full flex flex-col items-center gap-5 screen-enter">
+              <div className="w-full flex gap-1">
+                {[0,1,2,3].map(i => (
+                  <div key={i} className="flex-1 h-0.5" style={{ background: accentColor }} />
+                ))}
+              </div>
+              <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20">STEP 04 · CLEARANCE FINALIZATION</p>
+              <h2 className="font-display font-bold text-2xl text-center text-white leading-tight">Finalize your<br />clearance</h2>
+              <p className="text-[0.44rem] tracking-[0.15em] uppercase text-white/22 text-center">Required to receive your boarding pass</p>
+              <div className="w-full flex flex-col gap-3">
+                <div>
+                  <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-1.5 block">// EMAIL — REQUIRED</span>
+                  <input type="email" value={email}
+                    onChange={e => { setEmail(e.target.value); setEmailError(false) }}
+                    onKeyDown={e => e.key === 'Enter' && finalize()}
+                    placeholder="YOUR@EMAIL.COM" autoComplete="email"
+                    className="w-full bg-black/40 text-white font-mono text-sm py-3.5 px-4 outline-none placeholder:text-white/18 placeholder:text-xs border border-white/10"
+                    style={{ borderBottom: `2px solid ${emailError ? 'rgba(255,80,80,0.7)' : accentColor}` }} />
+                </div>
+                <div>
+                  <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/22 mb-1.5 block">// PHONE — OPTIONAL</span>
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                    placeholder="+1 (000) 000-0000" autoComplete="tel"
+                    className="w-full bg-black/40 text-white font-mono text-sm py-3.5 px-4 outline-none placeholder:text-white/18 placeholder:text-xs border border-white/10"
+                    style={{ borderBottom: `2px solid ${accentColor}60` }} />
+                </div>
+              </div>
+              <button onClick={finalize}
+                className="w-full py-4 text-[0.65rem] tracking-[0.18em] uppercase font-mono text-white active:opacity-70"
+                style={{ background: 'linear-gradient(135deg, rgba(0,40,120,0.9), rgba(50,0,100,0.9))', border: `1px solid ${accentColor}40` }}>
+                FINALIZE CLEARANCE →
+              </button>
+              <p className="text-[0.38rem] tracking-[0.1em] uppercase text-white/15 text-center leading-relaxed">
+                21+ · California · No Spam · Reply STOP to unsubscribe
+              </p>
+            </div>
+          )}
+
+          {/* LAUNCHING */}
+          {screen === 'launching' && (
+            <div className="w-full flex flex-col items-center gap-6 screen-enter">
+              <div className="text-6xl animate-bounce">🚀</div>
+              <h2 className="font-display font-extrabold text-3xl tracking-[0.08em] text-center text-white">LAUNCHING...</h2>
+              <div className="w-full h-0.5 relative overflow-hidden bg-white/10">
+                <div className="absolute inset-y-0 left-0 w-full animate-scan"
+                  style={{ background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)` }} />
+              </div>
+              <p className="text-[0.48rem] tracking-[0.2em] uppercase text-white/25">WRITING TO MISSION LOG...</p>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  )
 }
