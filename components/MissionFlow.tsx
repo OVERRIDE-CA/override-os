@@ -208,6 +208,22 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
       localStorage.setItem('override_level', user.level)
       localStorage.setItem('override_name', name.trim())
       localStorage.setItem('override_scan_ts', new Date().toISOString())
+
+      // Send confirmation email — non-blocking
+      fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          name: name.trim(),
+          email,
+          planet: finalPlanet,
+          intensity: finalIntensity,
+          level: user.level,
+          flightCode: `SS-${finalPlanet.slice(0,3).toUpperCase()}-${user.id.slice(-4).toUpperCase()}`,
+        }),
+      }).catch(() => {})
+
       // #1 #5 Pass current session planet+intensity through URL
       router.push(`/boarding-pass?id=${user.id}&cp=${finalPlanet}&ci=${finalIntensity}`)
     } catch (err) {
