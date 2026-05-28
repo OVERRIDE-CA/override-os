@@ -22,7 +22,17 @@ export const PLANET_NAMES: Record<string, string> = {
   saturn:   'SATURN',
   venus:    'VENUS',
   neptune:  'NEPTUNE',
-  moonrock: 'MOON ROCK',
+  moonrock: 'REST STATION',
+}
+
+// Short codes for boarding pass route display (max 6 chars)
+export const PLANET_SHORT: Record<string, string> = {
+  mars:     'MARS',
+  jupiter:  'JUP',
+  saturn:   'SAT',
+  venus:    'VENUS',
+  neptune:  'NEP',
+  moonrock: 'REST',
 }
 
 // Planet accent colors
@@ -42,7 +52,7 @@ export const PLANET_SUBTITLES: Record<string, string> = {
   saturn:   'RING SECTOR CLEARANCE',
   venus:    'ATMOSPHERIC PROTOCOL',
   neptune:  'DEEP SPACE MODE',
-  moonrock: 'MAXIMUM ORBIT SELECTED',
+  moonrock: 'REST STATION — DOCKING PROTOCOL',
 }
 
 // 18-combination routing table
@@ -145,11 +155,24 @@ export async function updateUserLevel(userId: string, level: string) {
 export async function incrementScanCount(userId: string) {
   const { data: user } = await supabase
     .from('users')
-    .select('scan_count')
+    .select('scan_count, updated_at')
     .eq('id', userId)
     .single()
 
   if (user) {
+    // ANTI-EXPLOIT: Only allow one increment per 24 hours
+    const lastUpdate = new Date(user.updated_at || 0)
+    const hoursSinceLastScan = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60)
+    if (hoursSinceLastScan < 24) {
+      // Too soon — return current level without incrementing
+      const currentCount = user.scan_count || 1
+      let currentLevel = 'NEW_RECRUIT'
+      if (currentCount >= 4) currentLevel = 'FIRST_CONTACT'
+      else if (currentCount >= 3) currentLevel = 'INNER_CIRCLE'
+      else if (currentCount >= 2) currentLevel = 'CREW_MEMBER'
+      return { scan_count: currentCount, level: currentLevel, incremented: false }
+    }
+
     const newCount = (user.scan_count || 1) + 1
     let newLevel = 'NEW_RECRUIT'
     if (newCount >= 4) newLevel = 'FIRST_CONTACT'
@@ -161,7 +184,7 @@ export async function incrementScanCount(userId: string) {
       .update({ scan_count: newCount, level: newLevel })
       .eq('id', userId)
 
-    return { scan_count: newCount, level: newLevel }
+    return { scan_count: newCount, level: newLevel, incremented: true }
   }
   return null
 }
