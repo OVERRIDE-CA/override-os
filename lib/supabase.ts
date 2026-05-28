@@ -155,7 +155,7 @@ export async function updateUserLevel(userId: string, level: string) {
 export async function incrementScanCount(userId: string) {
   const { data: user } = await supabase
     .from('users')
-    .select('scan_count, updated_at')
+    .select('scan_count, updated_at, streak_count, last_scan_date, planet_history, planet')
     .eq('id', userId)
     .single()
 
@@ -164,7 +164,6 @@ export async function incrementScanCount(userId: string) {
     const lastUpdate = new Date(user.updated_at || 0)
     const hoursSinceLastScan = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60)
     if (hoursSinceLastScan < 24) {
-      // Too soon — return current level without incrementing
       const currentCount = user.scan_count || 1
       let currentLevel = 'NEW_RECRUIT'
       if (currentCount >= 4) currentLevel = 'FIRST_CONTACT'
@@ -179,12 +178,43 @@ export async function incrementScanCount(userId: string) {
     else if (newCount >= 3) newLevel = 'INNER_CIRCLE'
     else if (newCount >= 2) newLevel = 'CREW_MEMBER'
 
+    // Streak logic — check if last scan was within 7 days
+    const today = new Date()
+    const lastScan = user.last_scan_date ? new Date(user.last_scan_date) : null
+    const daysSinceLastScan = lastScan
+      ? (today.getTime() - lastScan.getTime()) / (1000 * 60 * 60 * 24)
+      : 999
+    const newStreak = daysSinceLastScan <= 7
+      ? (user.streak_count || 0) + 1
+      : 1 // Reset streak if more than 7 days
+
+    // Planet affinity — track history
+    const history: string[] = user.planet_history || []
+    if (user.planet) history.push(user.planet)
+    // Find home planet (most visited)
+    const freq: Record<string, number> = {}
+    history.forEach(p => { freq[p] = (freq[p] || 0) + 1 })
+    const homePlanet = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] || user.planet
+
     await supabase
       .from('users')
-      .update({ scan_count: newCount, level: newLevel })
+      .update({
+        scan_count: newCount,
+        level: newLevel,
+        streak_count: newStreak,
+        last_scan_date: today.toISOString().split('T')[0],
+        planet_history: history.slice(-20), // Keep last 20
+        home_planet: homePlanet,
+      })
       .eq('id', userId)
 
-    return { scan_count: newCount, level: newLevel, incremented: true }
+    return {
+      scan_count: newCount,
+      level: newLevel,
+      streak_count: newStreak,
+      home_planet: homePlanet,
+      incremented: true,
+    }
   }
   return null
 }
@@ -197,6 +227,7 @@ export async function upsertUser(data: {
   recommendation?: string
   email: string
   phone?: string
+  referralCode?: string
 }) {
   // Check if email already exists
   const { data: existing } = await supabase
@@ -206,12 +237,18 @@ export async function upsertUser(data: {
     .single()
 
   if (existing) {
-    // Returning user — increment scan count and update planet
     const newCount = (existing.scan_count || 1) + 1
     let newLevel = 'NEW_RECRUIT'
     if (newCount >= 4) newLevel = 'FIRST_CONTACT'
     else if (newCount >= 3) newLevel = 'INNER_CIRCLE'
     else if (newCount >= 2) newLevel = 'CREW_MEMBER'
+
+    // Update planet history and home planet
+    const history: string[] = existing.planet_history || []
+    if (data.planet) history.push(data.planet)
+    const freq: Record<string, number> = {}
+    history.forEach(p => { freq[p] = (freq[p] || 0) + 1 })
+    const homePlanet = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] || data.planet
 
     const { data: updated } = await supabase
       .from('users')
@@ -221,6 +258,9 @@ export async function upsertUser(data: {
         recommendation: data.recommendation || null,
         scan_count: newCount,
         level: newLevel,
+        last_scan_date: new Date().toISOString().split('T')[0],
+        planet_history: history.slice(-20),
+        home_planet: homePlanet,
       })
       .eq('id', existing.id)
       .select()
@@ -230,6 +270,9 @@ export async function upsertUser(data: {
   }
 
   // New user — create record
+  // Generate referral code
+  const referralCode = `OVR-${Math.random().toString(36).slice(2,6).toUpperCase()}`
+
   const { data: newUser, error } = await supabase
     .from('users')
     .insert({
@@ -242,10 +285,36 @@ export async function upsertUser(data: {
       level: 'NEW_RECRUIT',
       status: 'LAUNCHED',
       scan_count: 1,
+      last_scan_date: new Date().toISOString().split('T')[0],
+      planet_history: [data.planet],
+      home_planet: data.planet,
+      referral_code: referralCode,
+      referred_by: data.referralCode || null,
+      streak_count: 1,
     })
     .select()
     .single()
 
   if (error) throw error
+
+  // Process referral if code provided
+  if (data.referralCode && newUser) {
+    await fetch('/api/referral', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newUserId: newUser.id, referralCode: data.referralCode }),
+    }).catch(() => {})
+  }
+
   return { user: newUser, isReturning: false }
+}
+
+// Get user affinity data
+export async function getUserAffinity(userId: string) {
+  const { data } = await supabase
+    .from('users')
+    .select('planet_history, home_planet, streak_count, referral_code, paradise_access')
+    .eq('id', userId)
+    .single()
+  return data
 }

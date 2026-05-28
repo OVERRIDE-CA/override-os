@@ -43,6 +43,10 @@ interface PassData {
   status: string
   created_at: string
   scan_count: number
+  streak_count?: number
+  home_planet?: string
+  referral_code?: string
+  paradise_access?: boolean
   email?: string
 }
 
@@ -421,6 +425,62 @@ export default function BoardingPassClient({
               {upgradeMessages[pass.level] || upgradeMessages.NEW_RECRUIT}
             </p>
           </div>
+
+          {/* STREAK + HOME PLANET */}
+          {(pass.streak_count || pass.home_planet) && (
+            <div className="w-full grid grid-cols-2 gap-3">
+              {pass.streak_count && pass.streak_count > 0 && (
+                <div className="border border-white/[0.06] bg-white/[0.01] p-3 text-center">
+                  <span className="text-[0.38rem] tracking-[0.18em] uppercase text-white/25 block mb-1">// STREAK</span>
+                  <span className="font-display font-extrabold text-2xl" style={{ color: pass.streak_count >= 4 ? '#f0b428' : pc.accent }}>
+                    {pass.streak_count >= 4 ? '🔥' : '⚡'} {pass.streak_count}
+                  </span>
+                  <span className="text-[0.38rem] tracking-[0.08em] uppercase text-white/25 block mt-0.5">
+                    {pass.streak_count >= 4 ? 'ON FIRE' : 'WEEK STREAK'}
+                  </span>
+                </div>
+              )}
+              {pass.home_planet && (
+                <div className="border border-white/[0.06] bg-white/[0.01] p-3 text-center">
+                  <span className="text-[0.38rem] tracking-[0.18em] uppercase text-white/25 block mb-1">// HOME PLANET</span>
+                  <span className="text-2xl block">{PLANET_EMOJIS[pass.home_planet] || '🔴'}</span>
+                  <span className="text-[0.42rem] tracking-[0.08em] uppercase font-bold block mt-0.5" style={{ color: pc.accent }}>
+                    {PLANET_NAMES[pass.home_planet] || 'MARS'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* REFERRAL */}
+          {pass.referral_code && (
+            <div className="w-full border border-white/[0.06] bg-white/[0.01] p-4">
+              <span className="text-[0.4rem] tracking-[0.2em] uppercase text-white/22 block mb-2">// REFER A CREW MEMBER</span>
+              <p className="text-[0.52rem] text-white/40 leading-relaxed mb-3">
+                Share your code. When a friend completes their first Mission Briefing — you both get Paradise early access.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-black/40 border border-white/10 px-3 py-2 text-center">
+                  <span className="font-mono text-sm font-bold tracking-[0.15em]" style={{ color: pc.accent }}>
+                    {pass.referral_code}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    const url = `https://www.overridecannabis.com/mission?ref=${pass.referral_code}`
+                    if (navigator.share) {
+                      navigator.share({ title: 'OVERRIDE™', text: 'Join me on OVERRIDE Mission Briefing 🚀', url })
+                    } else {
+                      navigator.clipboard.writeText(url)
+                    }
+                  }}
+                  className="px-4 py-2 text-[0.5rem] tracking-[0.12em] uppercase font-mono text-white active:opacity-70"
+                  style={{ background: `${pc.accent}20`, border: `1px solid ${pc.accent}40` }}>
+                  SHARE
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* SHARE */}
           <button onClick={handleShare}

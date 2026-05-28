@@ -52,7 +52,7 @@ function useTypewriter(text: string, speed = 40, start = false) {
   return { displayed, done }
 }
 
-export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
+export default function MissionFlow({ scanPlanet, referralCode }: { scanPlanet?: string; referralCode?: string }) {
   const router = useRouter()
   const [screen, setScreen] = useState<Screen>('entry')
   const [name, setName] = useState('')
@@ -199,6 +199,7 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
         recommendation: rec?.key || '',
         email,
         phone: phone || undefined,
+        referralCode: referralCode || undefined,
       })
       await logEvent(user.id, 'mission_completed', {
         planet: finalPlanet, intensity: finalIntensity, recommendation: rec?.key,
