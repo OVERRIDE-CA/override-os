@@ -253,7 +253,8 @@ export default function MissionFlow({ scanPlanet }: { scanPlanet?: string }) {
                 </div>
               )}
               <p className="text-[0.44rem] tracking-[0.28em] uppercase text-white/20 text-center">OVERRIDE™ SYSTEM ACCESS PORTAL</p>
-              <h1 className="font-display font-extrabold text-5xl tracking-[0.08em] text-center text-white leading-none">
+              <h1 className="font-display font-extrabold tracking-[0.08em] text-center text-white leading-none"
+                style={{ fontSize: 'clamp(2.2rem, 14vw, 4rem)' }}>
                 MISSION<br />BRIEFING<sup className="text-[0.35em] opacity-35">™</sup>
               </h1>
               <div className="w-full border relative overflow-hidden px-5 py-4 text-center sweep"
