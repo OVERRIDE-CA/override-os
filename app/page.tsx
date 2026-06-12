@@ -486,10 +486,10 @@ export default function HomePage() {
               ))}
               <div style={{ marginTop: '16px', padding: '14px 18px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '2px' }}>POWERED BY SQRD LABS</p>
-                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>Licensed · California Compliant · ISO/IEC 17025</p>
+                  <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '2px' }}>CALIFORNIA LICENSED LABORATORY</p>
+                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>Licensed · California DCC Compliant · ISO/IEC 17025</p>
                 </div>
-                <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)' }}>sqrdlab.com</span>
+                <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(80,255,128,0.6)' }}>✓ VERIFIED</span>
               </div>
             </div>
           </div>
