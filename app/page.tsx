@@ -380,15 +380,121 @@ export default function HomePage() {
 
       {/* COMPLIANCE STRIP */}
       <div style={{
-        background: 'rgba(255,255,255,0.02)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        padding: '13px 20px', textAlign: 'center', position: 'relative', zIndex: 2,
+        background: 'rgba(255,255,255,0.03)',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        padding: '18px 24px', position: 'relative', zIndex: 2, overflow: 'hidden',
       }}>
-        <p style={{ fontSize: '11px', letterSpacing: '0.16em', color: 'rgba(255,255,255,0.18)', margin: 0, lineHeight: 1.6 }}>
-          ✓ LAB TESTED &nbsp;·&nbsp; ✓ STATE LICENSED &nbsp;·&nbsp; ✓ SCHEDULE III COMPLIANT &nbsp;·&nbsp; ✓ CALIFORNIA DISPENSARIES ONLY · 21+
-        </p>
+        {/* subtle glow line */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)',
+        }} />
+        <div style={{
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          flexWrap: 'wrap', gap: '8px 32px',
+        }}>
+          {[
+            'LAB TESTED',
+            'STATE LICENSED',
+            'SCHEDULE III COMPLIANT',
+            'CALIFORNIA DISPENSARIES ONLY',
+            '21+ ONLY',
+          ].map((item) => (
+            <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                width: '16px', height: '16px', borderRadius: '50%',
+                border: '1px solid rgba(80,255,128,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '9px', color: 'rgba(80,255,128,0.8)', flexShrink: 0,
+              }}>✓</span>
+              <span style={{
+                fontSize: '11px', letterSpacing: '0.18em',
+                color: 'rgba(255,255,255,0.55)', fontWeight: 500,
+              }}>{item}</span>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* TESTING */}
+      <section style={{
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(255,255,255,0.01)',
+        position: 'relative', zIndex: 2,
+      }}>
+        <div className="section-pad" style={{ maxWidth: '1280px', margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '80px', alignItems: 'start' }} className="product-grid">
+            <div>
+              <p style={{ fontSize: '11px', letterSpacing: '0.3em', color: 'rgba(255,255,255,0.24)', marginBottom: '12px' }}>
+                // LAB TESTING
+              </p>
+              <h2 style={{ fontSize: 'clamp(28px, 5vw, 44px)', fontWeight: 900, letterSpacing: '-0.02em', marginBottom: '16px', lineHeight: 1.1 }}>
+                FULL COA TESTING<br />EVERY BATCH
+              </h2>
+              <p style={{ fontSize: '14px', lineHeight: 1.85, color: 'rgba(255,255,255,0.4)', marginBottom: '28px' }}>
+                Every OVERRIDE product is tested by a licensed California laboratory before it reaches a dispensary shelf. Full Certificate of Analysis — including terpene profile — on every single batch. No exceptions.
+              </p>
+              <div style={{ padding: '20px 24px', border: '1px solid rgba(80,255,128,0.15)', background: 'rgba(80,255,128,0.04)', marginBottom: '28px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(80,255,128,0.8)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.12em', color: 'rgba(80,255,128,0.9)' }}>MOST POPULAR PACKAGE — FULL COA WITH TERPENES</span>
+                </div>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.75 }}>
+                  Potency · Pesticides · Microbial · Heavy Metals · Residual Solvents · Foreign Material · Water Activity · <strong style={{ color: 'rgba(255,255,255,0.65)' }}>Full Terpene Profile</strong>
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ padding: '16px 24px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
+                  <p style={{ fontSize: '24px', fontWeight: 900, margin: '0 0 4px' }}>$420</p>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>FULL COA + TERPS</p>
+                </div>
+                <div style={{ padding: '16px 24px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
+                  <p style={{ fontSize: '24px', fontWeight: 900, margin: '0 0 4px' }}>3–5</p>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>DAY TURNAROUND</p>
+                </div>
+                <div style={{ padding: '16px 24px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
+                  <p style={{ fontSize: '24px', fontWeight: 900, margin: '0 0 4px' }}>CA</p>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>DCC LICENSED LAB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* test breakdown */}
+            <div>
+              <p style={{ fontSize: '11px', letterSpacing: '0.22em', color: 'rgba(255,255,255,0.24)', marginBottom: '16px' }}>WHAT'S TESTED</p>
+              {[
+                { test: 'Potency (Cannabinoids)', price: '$65', desc: 'THC, CBD, and full cannabinoid panel' },
+                { test: 'Terpenes', price: '$100', desc: 'Full aromatic and flavor profile' },
+                { test: 'Pesticides + Mycotoxins', price: '$150', desc: 'Safety and compliance screening' },
+                { test: 'Heavy Metals', price: '$150', desc: 'Lead, cadmium, arsenic, mercury' },
+                { test: 'Microbial', price: '$125', desc: 'Bacteria, mold, yeast screening' },
+                { test: 'Residual Solvents', price: '$125', desc: 'Extraction solvent residue testing' },
+                { test: 'Foreign Material', price: '$25', desc: 'Physical contamination check' },
+                { test: 'Water Activity', price: '$25', desc: 'Moisture and stability analysis' },
+              ].map(item => (
+                <div key={item.test} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '10px 0',
+                }}>
+                  <div>
+                    <p style={{ fontSize: '12px', fontWeight: 500, marginBottom: '2px', letterSpacing: '0.04em' }}>{item.test}</p>
+                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>{item.desc}</p>
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.5)', flexShrink: 0, marginLeft: '16px' }}>{item.price}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: '16px', padding: '14px 18px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '2px' }}>POWERED BY SQRD LABS</p>
+                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>Licensed · California Compliant · ISO/IEC 17025</p>
+                </div>
+                <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)' }}>sqrdlab.com</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* STRAINS */}
       <section id="strains" className="section-pad" style={{ maxWidth: '1280px', margin: '0 auto', position: 'relative', zIndex: 2 }}>
