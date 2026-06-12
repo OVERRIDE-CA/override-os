@@ -623,13 +623,13 @@ export default function HomePage() {
                   { label: 'FINANCING', value: 'FundCanna — 24hr approvals' },
                   { label: 'DISTRIBUTION', value: 'Licensed California distributor' },
                   { label: 'COMPLIANCE', value: 'COA verified every batch' },
-                ].map(([label, value]) => (
-                  <div key={label} style={{
+                ].map((item) => (
+                  <div key={item.label} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '11px 0', fontSize: '12px',
                   }}>
-                    <span style={{ letterSpacing: '0.16em', color: 'rgba(255,255,255,0.28)' }}>{label}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>{value}</span>
+                    <span style={{ letterSpacing: '0.16em', color: 'rgba(255,255,255,0.28)' }}>{item.label}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>{item.value}</span>
                   </div>
                 ))}
               </div>
