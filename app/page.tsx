@@ -634,9 +634,9 @@ export default function HomePage() {
                 ))}
               </div>
               <div style={{ padding: '20px 24px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', marginBottom: '28px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '8px' }}>HOW FUNDCANNA WORKS</p>
+                <p style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '8px' }}>HOW IT WORKS</p>
                 <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.38)', lineHeight: 1.75 }}>
-                  Apply directly at FundCanna. Once approved, you receive flexible financing for your OVERRIDE order. No disputes with us — FundCanna handles the financial relationship. COD is standard. Net terms are available at a 5% premium.
+                  Apply to FundCanna at fundcanna.com. Get approved in as little as 24 hours. When you order OVERRIDE, FundCanna pays us directly — you receive funds within a day of approval. You repay FundCanna on flexible terms. No payment disputes between us. Clean business on both sides.
                 </p>
               </div>
               <a href="mailto:rentdigits@gmail.com" style={{
