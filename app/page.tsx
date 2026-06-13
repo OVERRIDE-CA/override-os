@@ -462,34 +462,39 @@ export default function HomePage() {
 
             {/* test breakdown */}
             <div>
-              <p style={{ fontSize: '11px', letterSpacing: '0.22em', color: 'rgba(255,255,255,0.24)', marginBottom: '16px' }}>WHAT'S TESTED</p>
+              <p style={{ fontSize: '11px', letterSpacing: '0.22em', color: 'rgba(255,255,255,0.24)', marginBottom: '16px' }}>WHAT'S TESTED EVERY BATCH</p>
               {[
-                { test: 'Potency (Cannabinoids)', price: '$65', desc: 'THC, CBD, and full cannabinoid panel' },
-                { test: 'Terpenes', price: '$100', desc: 'Full aromatic and flavor profile' },
-                { test: 'Pesticides + Mycotoxins', price: '$150', desc: 'Safety and compliance screening' },
-                { test: 'Heavy Metals', price: '$150', desc: 'Lead, cadmium, arsenic, mercury' },
-                { test: 'Microbial', price: '$125', desc: 'Bacteria, mold, yeast screening' },
-                { test: 'Residual Solvents', price: '$125', desc: 'Extraction solvent residue testing' },
-                { test: 'Foreign Material', price: '$25', desc: 'Physical contamination check' },
-                { test: 'Water Activity', price: '$25', desc: 'Moisture and stability analysis' },
+                { test: 'Potency', desc: 'THC, CBD, and full cannabinoid panel' },
+                { test: 'Terpenes', desc: 'Full aromatic and flavor profile' },
+                { test: 'Pesticides + Mycotoxins', desc: 'Safety and compliance screening' },
+                { test: 'Heavy Metals', desc: 'Lead, cadmium, arsenic, mercury' },
+                { test: 'Microbial', desc: 'Bacteria, mold, yeast screening' },
+                { test: 'Residual Solvents', desc: 'Extraction solvent residue testing' },
+                { test: 'Foreign Material', desc: 'Physical contamination check' },
+                { test: 'Water Activity', desc: 'Moisture and stability analysis' },
               ].map(item => (
                 <div key={item.test} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '10px 0',
+                  display: 'flex', alignItems: 'center', gap: '14px',
+                  borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '11px 0',
                 }}>
+                  <span style={{
+                    width: '18px', height: '18px', borderRadius: '50%',
+                    border: '1px solid rgba(80,255,128,0.35)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '9px', color: 'rgba(80,255,128,0.7)', flexShrink: 0,
+                  }}>✓</span>
                   <div>
-                    <p style={{ fontSize: '12px', fontWeight: 500, marginBottom: '2px', letterSpacing: '0.04em' }}>{item.test}</p>
-                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>{item.desc}</p>
+                    <p style={{ fontSize: '12px', fontWeight: 600, marginBottom: '2px', letterSpacing: '0.04em' }}>{item.test}</p>
+                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)', margin: 0 }}>{item.desc}</p>
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.5)', flexShrink: 0, marginLeft: '16px' }}>{item.price}</span>
                 </div>
               ))}
-              <div style={{ marginTop: '16px', padding: '14px 18px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ marginTop: '20px', padding: '16px 18px', background: 'rgba(80,255,128,0.04)', border: '1px solid rgba(80,255,128,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '2px' }}>CALIFORNIA LICENSED LABORATORY</p>
-                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)' }}>Licensed · California DCC Compliant · ISO/IEC 17025</p>
+                  <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', marginBottom: '2px', color: 'rgba(80,255,128,0.85)' }}>CALIFORNIA LICENSED LABORATORY</p>
+                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)', margin: 0 }}>DCC Licensed · ISO/IEC 17025 Certified</p>
                 </div>
-                <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(80,255,128,0.6)' }}>✓ VERIFIED</span>
+                <span style={{ fontSize: '11px', letterSpacing: '0.12em', color: 'rgba(80,255,128,0.7)', fontWeight: 700 }}>✓ VERIFIED</span>
               </div>
             </div>
           </div>
